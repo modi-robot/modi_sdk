@@ -1,0 +1,42 @@
+cmake_minimum_required(VERSION 3.16)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  project(modi_sdk_examples LANGUAGES CXX)
+  find_package(ament_cmake REQUIRED)
+  find_package(modi_sdk REQUIRED)
+  set(MODI_SDK_EXAMPLES_STANDALONE ON)
+endif()
+
+# Sources under <example_dir>/; first arg = executable name, third = .cpp stem (no .cpp).
+macro(add_sdk_example exe_name rel_dir src_name)
+  add_executable(${exe_name}
+                 "${CMAKE_CURRENT_SOURCE_DIR}/${rel_dir}/${src_name}.cpp")
+  if(MODI_SDK_EXAMPLES_STANDALONE)
+    ament_target_dependencies(${exe_name} modi_sdk)
+  else()
+    target_link_libraries(${exe_name} modi_sdk)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_link_options(${exe_name} PRIVATE "LINKER:--allow-shlib-undefined")
+  endif()
+  install(TARGETS ${exe_name} DESTINATION lib/${PROJECT_NAME})
+endmacro()
+
+add_sdk_example(single_arm_example_rt_topic single_arm_example example_rt_topic)
+add_sdk_example(single_arm_example_robot_model single_arm_example example_robot_model)
+add_sdk_example(single_arm_example_robot_state single_arm_example example_robot_state)
+add_sdk_example(single_arm_example_motion_control single_arm_example example_motion_control)
+add_sdk_example(single_arm_example_algorithm single_arm_example example_algorithm)
+add_sdk_example(single_arm_example_topic_publish single_arm_example example_topic_publish)
+add_sdk_example(single_arm_example_set_installation_position single_arm_example example_set_installation_position)
+add_sdk_example(single_arm_example_eef single_arm_example example_eef)
+
+add_sdk_example(dual_arm_example_rt_topic dual_arm_example example_rt_topic)
+add_sdk_example(dual_arm_example_robot_model dual_arm_example example_robot_model)
+add_sdk_example(dual_arm_example_robot_state dual_arm_example example_robot_state)
+add_sdk_example(dual_arm_example_motion_control dual_arm_example example_motion_control)
+add_sdk_example(dual_arm_example_algorithm dual_arm_example example_algorithm)
+add_sdk_example(dual_arm_example_topic_publish dual_arm_example example_topic_publish)
+add_sdk_example(dual_arm_example_set_installation_position dual_arm_example example_set_installation_position)
+
+add_sdk_example(chassis_example_speed_translate chassis_example example_speed_translate)
