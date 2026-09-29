@@ -19,11 +19,17 @@ void PrintVec(const std::string& label, const std::vector<double>& v,
   std::cout << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   signal(SIGINT, SignalHandler);
   signal(SIGTERM, SignalHandler);
 
-  auto client = std::make_shared<modi_sdk::RobotClient>();
+  modi_sdk::RobotClient::Config config;
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <robot_id>\n";
+    return 2;
+  }
+  config.target_robot_id = argv[1];
+  auto client = std::make_shared<modi_sdk::RobotClient>(config);
   auto state = client->Robot()->State();
   auto motion = client->Robot()->Motion();
 
@@ -57,8 +63,8 @@ int main() {
     }
 
     // Planner status
-    int status = motion->GetPlannerStatus();
-    std::cout << "  PlannerStatus: " << status << std::endl;
+    const auto status = motion->GetPlannerStatus();
+    std::cout << "  PlannerStatus: " << static_cast<int>(status) << std::endl;
 
     std::cout << "---" << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(500));

@@ -44,7 +44,7 @@ int WaitMotionFinish(const std::shared_ptr<modi_sdk::MotionApi>& motion,
                                                       : 10000);
   auto expired = [&] { return std::chrono::steady_clock::now() >= deadline; };
   auto raw = [&] { return motion->GetPlannerStatus(); };
-  auto st = [&] { return static_cast<PS>(raw()); };
+  auto st = [&] { return raw(); };
   constexpr auto sl = std::chrono::milliseconds(1);
 
   if (st() == PS::kError) return static_cast<int>(PS::kError);
@@ -67,15 +67,21 @@ int WaitMotionFinish(const std::shared_ptr<modi_sdk::MotionApi>& motion,
   }
 
   while (st() == PS::kPlanning) std::this_thread::sleep_for(sl);
-  return st() == PS::kError ? static_cast<int>(PS::kError) : raw();
+  return st() == PS::kError ? static_cast<int>(PS::kError)
+                            : static_cast<int>(raw());
 }
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
   signal(SIGINT, SignalHandler);
   signal(SIGTERM, SignalHandler);
 
   modi_sdk::RobotClient::Config cfg;
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <robot_id>\n";
+    return 2;
+  }
+  cfg.target_robot_id = argv[1];
   auto client = std::make_shared<modi_sdk::RobotClient>(cfg);
   if (!client->Start()) {
     std::cerr << "RobotClient::Start failed\n";

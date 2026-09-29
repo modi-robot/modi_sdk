@@ -46,11 +46,16 @@ void PrintSeq(const std::string& label, const Seq& seq) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
   signal(SIGINT, SignalHandler);
   signal(SIGTERM, SignalHandler);
 
   modi_sdk::RobotClient::Config cfg;
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <robot_id>\n";
+    return 2;
+  }
+  cfg.target_robot_id = argv[1];
   auto client = std::make_shared<modi_sdk::RobotClient>(cfg);
   Snapshot snap;
 

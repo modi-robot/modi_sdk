@@ -29,12 +29,12 @@ int WaitMotionFinish(const std::shared_ptr<modi_sdk::MotionApi>& motion,
                                                       : 10000);
   auto expired = [&] { return std::chrono::steady_clock::now() >= deadline; };
   auto raw = [&] { return motion->GetPlannerStatus(); };
-  auto st = [&] { return static_cast<PS>(raw()); };
+  auto st = [&] { return raw(); };
   constexpr auto sl = std::chrono::milliseconds(1);
 
-  const int s0 = raw();
-  if (static_cast<PS>(s0) == PS::kError) return static_cast<int>(PS::kError);
-  if (static_cast<PS>(s0) != PS::kPlanning) {
+  const PS s0 = raw();
+  if (s0 == PS::kError) return static_cast<int>(PS::kError);
+  if (s0 != PS::kPlanning) {
     while (g_running.load() && !expired() && raw() == s0) {
       std::this_thread::sleep_for(sl);
     }
@@ -58,7 +58,8 @@ int WaitMotionFinish(const std::shared_ptr<modi_sdk::MotionApi>& motion,
     std::this_thread::sleep_for(sl);
   }
   if (!g_running.load()) return -1;
-  return st() == PS::kError ? static_cast<int>(PS::kError) : raw();
+  return st() == PS::kError ? static_cast<int>(PS::kError)
+                            : static_cast<int>(raw());
 }
 
 void BuildYzPlaneCircleVia(const std::vector<double>& start,
@@ -82,11 +83,16 @@ void BuildYzPlaneCircleVia(const std::vector<double>& start,
 }
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
   signal(SIGINT, SignalHandler);
   signal(SIGTERM, SignalHandler);
 
   modi_sdk::RobotClient::Config cfg;
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <robot_id>\n";
+    return 2;
+  }
+  cfg.target_robot_id = argv[1];
   auto client = std::make_shared<modi_sdk::RobotClient>(cfg);
   if (!client->Start()) {
     std::cerr << "RobotClient::Start failed\n";

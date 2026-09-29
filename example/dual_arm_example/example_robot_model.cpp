@@ -12,8 +12,14 @@ void PrintVec(const std::string& label, const std::vector<double>& v) {
   std::cout << std::endl;
 }
 
-int main() {
-  auto client = std::make_shared<modi_sdk::RobotClient>();
+int main(int argc, char* argv[]) {
+  modi_sdk::RobotClient::Config config;
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <robot_id>\n";
+    return 2;
+  }
+  config.target_robot_id = argv[1];
+  auto client = std::make_shared<modi_sdk::RobotClient>(config);
   auto model = client->Robot()->Model();
 
   if (!client->Start()) {

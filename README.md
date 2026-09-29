@@ -26,6 +26,8 @@
   ·
   <a href="docs/MODI%20SDK%20接口文档.md"><strong>接口文档</strong></a>
   ·
+  <a href="docs/MODI%20SDK%20错误码说明.md"><strong>错误码</strong></a>
+  ·
   <a href="example"><strong>示例代码</strong></a>
 </p>
 
@@ -35,8 +37,8 @@ MODI SDK 通过 Fast DDS 与 `modi_system` 通信，为 MODI 机器人应用提�
 C++ 接口。SDK 支持机械臂、双臂和移动底盘，可用于模型查询、状态读取、运动控制、
 力控制、运动学与动力学计算、设备管理、数字 IO 和末端执行器控制。
 
-正式发布包包含预编译动态库、公开头文件、CMake 配置、运行依赖、示例源码、已编译
-示例和用户文档。用户无需编译 SDK 本身，只需安装兼容的 ROS 2 环境并下载对应架构的
+正式发布包包含预编译动态库、公开头文件、CMake 配置、运行依赖、示例源码和用户文档。
+用户无需编译 SDK 本身，只需安装兼容的 ROS 2 环境并下载对应架构的
 发布包，即可开始应用开发。
 
 ## 主要功能
@@ -118,21 +120,14 @@ source ./setup.bash
 ### 3. 编译示例
 
 ```bash
-cd share/modi_sdk/example
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel "$(nproc)"
+cmake -S example -B build/example -DCMAKE_BUILD_TYPE=Release
+cmake --build build/example --parallel "$(nproc)"
 ```
 
 先运行不会主动下发运动目标的状态示例：
 
 ```bash
-./build/single_arm_example_robot_state
-```
-
-发布包也提供预编译示例。在发布包根目录可直接执行：
-
-```bash
-./lib/modi_sdk/single_arm_example_robot_state
+./build/example/single_arm_example_robot_state
 ```
 
 运行前请先启动机器人侧 `modi_system`，并确保 SDK 与 System 的 DDS Domain ID 一致。
@@ -155,17 +150,19 @@ cmake --build build --parallel "$(nproc)"
 | [MODI SDK 使用说明](docs/MODI%20SDK%20使用说明.md) | 发布包获取、环境加载、示例编译运行、数据约定和常见问题 |
 | [MODI SDK 快速开发指南](docs/MODI%20SDK%20快速开发指南.md) | 从零创建用户工程，完成状态读取、关节运动、实时订阅和底盘控制 |
 | [MODI SDK 接口文档](docs/MODI%20SDK%20接口文档.md) | API 参数、返回值、单位、数据结构、故障码和全部实时话题 |
+| [MODI SDK 错误码说明](docs/MODI%20SDK%20错误码说明.md) | 操作错误码和设备诊断码的名称、含义及排查或恢复建议 |
+| [底盘 SDK 示例](docs/%E5%BA%95%E7%9B%98%20SDK%20%E7%A4%BA%E4%BE%8B.md) | 移动底盘示例的编译、运行和安全说明 |
 
 ## 发布包结构
 
 ```text
 modi_sdk_<版本>_<平台>_<架构>_<Git短提交>/
+├── README.md                  # SDK 总览和文档入口
+├── docs/                      # 用户文档和自动生成的错误码说明
+├── example/                   # 可独立编译的示例源码
 ├── include/                    # SDK 和依赖的公开头文件
-├── lib/                        # SDK、DDS、运行库及预编译示例
-├── share/
-│   └── modi_sdk/
-│       ├── docs/               # 用户文档
-│       └── example/            # 可独立编译的示例源码
+├── lib/                        # SDK、DDS 和运行依赖库
+├── share/                      # CMake、ROS 2 和运行时资源
 ├── setup.bash
 ├── local_setup.bash
 ├── version

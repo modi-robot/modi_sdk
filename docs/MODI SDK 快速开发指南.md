@@ -441,7 +441,23 @@ int main() {
 速度模式下不要只依赖一次速度指令后程序自然退出。正常路径、错误路径和信号退出路径都
 应显式停止底盘；生产程序还应增加指令超时、通信中断和急停处理。
 
-## 8. 下一步
+## 8. SLAM 与导航
+
+通过 `client.Slam()` 或 `client.Chassis()->Slam()` 获取 `ChassisSlamApi`。典型顺序为：
+
+1. 建图时调用 `SelectSlamMode(SlamMode::kMapping, map_dir)`，其中
+   `map_dir` 必须是 `/tmp/modi_chassis_mapping_*` 会话目录；正式产品流程由
+   Scope 创建并管理该目录。
+2. 退出建图时调用 `SelectSlamMode(SlamMode::kIdle)` 并等待地图保存。
+3. 定位时调用 `LoadMap(map_dir)`；`map_dir` 必须是
+   `$MODI_WS_ROOT/maps` 的直接子目录，然后等待 `GetBasePose().valid` 为 `true`。
+4. 调用 `moveTranslateInMap`、`moveAckermannInMap` 或 `moveHolonomicInMap` 导航。
+5. 使用 `GetNavigationStatus()` 和 `GetGlobalPath()` 监控执行状态。
+
+完整代码见 `chassis_example_slam`、`chassis_example_localization_navigation` 和
+`chassis_example_navigation`。
+
+## 9. 下一步
 
 - 查看 [MODI SDK 接口文档](MODI%20SDK%20接口文档.md) 选择功能接口。
 - 阅读发布包 `share/modi_sdk/example/` 中的单臂、双臂和底盘示例，获取更多完整用法。

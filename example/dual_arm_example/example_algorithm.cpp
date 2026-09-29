@@ -13,8 +13,13 @@ void PrintVec(const std::string& label, const std::vector<double>& v) {
   std::cout << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   modi_sdk::RobotClient::Config cfg;
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <robot_id>\n";
+    return 2;
+  }
+  cfg.target_robot_id = argv[1];
   auto client = std::make_shared<modi_sdk::RobotClient>(cfg);
   auto model = client->Robot()->Model();
   auto state = client->Robot()->State();
@@ -55,12 +60,15 @@ int main() {
                  "indicate model/config mismatch.\n";
   }
 
-  // IkPosSolver: end effector poses -> joints
+  // SolveIkPos: end effector poses -> joints
   if (!fk_poses.empty()) {
-    std::cout << "\n=== IkPosSolver ===" << std::endl;
+    std::cout << "\n=== SolveIkPos ===" << std::endl;
     std::vector<double> ik_result;
-    ret = algo->IkPosSolver(ref_joints, fk_poses, ik_result);
-    std::cout << "IkPosSolver ret=" << ret << std::endl;
+    std::vector<double> psi_selected;
+    modi_sdk::IkSolveOptions options;
+    ret = algo->SolveIkPos(ref_joints, fk_poses, options, ik_result,
+                           psi_selected);
+    std::cout << "SolveIkPos ret=" << ret << std::endl;
     if (ret == 0) PrintVec("  ik_result", ik_result);
   }
 
