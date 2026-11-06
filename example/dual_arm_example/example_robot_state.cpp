@@ -40,7 +40,16 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  const auto arm_names = client->Robot()->Model()->GetArmNames();
   while (g_running) {
+    const auto modes = state->GetControlMode();
+    if (modes.size() == arm_names.size()) {
+      for (std::size_t i = 0; i < arm_names.size(); ++i) {
+        std::cout << "  " << arm_names[i] << " ControlMode: "
+                  << static_cast<int>(modes[i]) << std::endl;
+      }
+    }
+
     auto pos = state->GetActuatorJointPositions();
     auto vel = state->GetActuatorJointVelocities();
     auto torque = state->GetActuatorJointTorquesData();

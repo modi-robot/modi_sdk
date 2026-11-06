@@ -1,6 +1,8 @@
 /**
  * @brief 演示 MODI SDK 的三种底盘速度控制 API。
  *
+ * 通过首个命令行参数指定 chassis_id，DDS Domain ID 使用默认值 0。
+ *
  * 调用流程：创建并启动 modi_sdk::RobotClient，通过 client.Chassis()
  * 获取 Model、Manager 和 Motion 接口；调用 ClearFaults()、PowerOn() 准备
  * 底盘；使用 SetMaxBaseLinearSpeed()、SetMaxBaseAngularSpeed()、
@@ -16,6 +18,7 @@
 #include <chrono>
 #include <csignal>
 #include <iostream>
+#include <string>
 #include <thread>
 
 #include "modi_sdk/robot_client.hpp"
@@ -28,13 +31,20 @@ void Stop(int) { g_running.store(false); }
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc != 2 || argv[1][0] == '\0') {
+    std::cerr << "Usage: " << argv[0] << " <chassis_id>\n";
+    return 2;
+  }
+
   // 注册信号处理，允许用户按 Ctrl-C 提前结束当前速度测试。
   std::signal(SIGINT, Stop);
   std::signal(SIGTERM, Stop);
 
   // 1. 创建并启动 SDK 客户端。
-  modi_sdk::RobotClient client;
+  modi_sdk::RobotClient::Config config;
+  config.target_robot_id = argv[1];
+  modi_sdk::RobotClient client(config);
   if (!client.Start()) {
     std::cerr << "RobotClient::Start() 失败\n";
     return 1;

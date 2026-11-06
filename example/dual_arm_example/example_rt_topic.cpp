@@ -27,6 +27,7 @@ void SignalHandler(int) { g_running.store(false); }
 // 回调与主线程共享的快照，互斥保护。
 struct Snapshot {
   std::mutex mu;
+  ControlModeArray control_modes;
   JointPositions jpos;
   JointVelocities jvel;
   JointTorques jtor;
@@ -60,6 +61,7 @@ int main(int argc, char* argv[]) {
   Snapshot snap;
 
   const std::vector<std::string> topics = {
+      "/Robot/State/ControlMode",
       "/Robot/State/JointPositions",      "/Robot/State/JointVelocities",
       "/Robot/State/JointTorques",        "/Robot/State/EndEffectorPoses",
       "/Robot/State/EndEffectorWrenches", "/Robot/Motion/PlannerStatus",
@@ -69,6 +71,7 @@ int main(int argc, char* argv[]) {
   const int ret =
       client->RegisterSubscriber(topics, [&snap](const modi_sdk::Parser& p) {
         std::lock_guard<std::mutex> lk(snap.mu);
+        snap.control_modes = p.Value<ControlModeArray>("/Robot/State/ControlMode");
         snap.jpos = p.Value<JointPositions>("/Robot/State/JointPositions");
         snap.jvel = p.Value<JointVelocities>("/Robot/State/JointVelocities");
         snap.jtor = p.Value<JointTorques>("/Robot/State/JointTorques");
@@ -118,6 +121,7 @@ int main(int argc, char* argv[]) {
     Snapshot s;
     {
       std::lock_guard<std::mutex> lk(snap.mu);
+      s.control_modes = snap.control_modes;
       s.jpos = snap.jpos;
       s.jvel = snap.jvel;
       s.jtor = snap.jtor;
@@ -127,6 +131,12 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "---\n";
+    if (s.control_modes.arm_names().size() == s.control_modes.modes().size()) {
+      for (std::size_t i = 0; i < s.control_modes.modes().size(); ++i) {
+        std::cout << s.control_modes.arm_names()[i] << " ControlMode: "
+                  << s.control_modes.modes()[i] << "\n";
+      }
+    }
     PrintSeq("jpos", s.jpos.joint_positions());
     PrintSeq("jvel", s.jvel.joint_velocities());
     PrintSeq("jtorque", s.jtor.joint_torques());

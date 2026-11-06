@@ -1,6 +1,8 @@
 /**
  * @brief 演示使用 MODI SDK 控制阿克曼底盘速度。
  *
+ * 通过首个命令行参数指定 chassis_id，DDS Domain ID 使用默认值 0。
+ *
  * 调用流程：创建并启动 RobotClient，获取 Chassis、Manager 和 Motion
  * 接口，调用 ClearFaults()、GetSafetyState() 和 PowerOn() 准备底盘，
  * 然后周期性调用 SpeedAckermann(vx, wz) 发送速度，最后调用
@@ -11,13 +13,21 @@
 
 #include <chrono>
 #include <iostream>
+#include <string>
 #include <thread>
 
 #include "modi_sdk/robot_client.hpp"
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc != 2 || argv[1][0] == '\0') {
+    std::cerr << "Usage: " << argv[0] << " <chassis_id>\n";
+    return 2;
+  }
+
   // 1. 创建并启动 SDK 客户端。
-  modi_sdk::RobotClient client;
+  modi_sdk::RobotClient::Config config;
+  config.target_robot_id = argv[1];
+  modi_sdk::RobotClient client(config);
   if (!client.Start()) {
     std::cerr << "RobotClient::Start() 失败\n";
     return 1;

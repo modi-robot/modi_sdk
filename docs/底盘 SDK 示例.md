@@ -3,6 +3,10 @@
 本文说明 `chassis_example_*` 示例的运行方式和命令行参数含义。运动、建图和导航示例
 都会控制真实底盘，运行前确认底盘周围无人、急停可用、地图和定位状态符合预期。
 
+所有底盘示例的第一个命令行参数均为 `<chassis_id>`，填写设备端 `system.chassis_id`
+的值。下文以 `chassis_001` 为例，请替换为实际 ID。DDS Domain ID 默认使用 `0`，
+与常规机械臂示例一致；使用其他域时调整示例中 `RobotClient::Config::domain_id`。
+
 运行前先按 SDK 使用说明完成编译，然后进入 SDK 发布包根目录并加载环境：
 
 ```bash
@@ -44,7 +48,7 @@ find ./build/example -maxdepth 1 -type f \
 读取底盘模型参数：
 
 ```bash
-./build/example/chassis_example_robot_model
+./build/example/chassis_example_robot_model chassis_001
 ```
 
 输出内容包括转向关节名、轮组数量、轮径、控制周期、最大速度、最大加速度和轮组安装位姿。
@@ -52,19 +56,20 @@ find ./build/example -maxdepth 1 -type f \
 读取底盘状态：
 
 ```bash
-./build/example/chassis_example_robot_state
+./build/example/chassis_example_robot_state chassis_001
 ```
 
-可选传入 `x y yaw` 重置当前基座位姿：
+`chassis_id` 后可选传入 `x y yaw` 重置当前基座位姿：
 
 ```bash
-./build/example/chassis_example_robot_state 0.0 0.0 0.0
+./build/example/chassis_example_robot_state chassis_001 0.0 0.0 0.0
 ```
 
 参数含义：
 
 | 参数    | 单位 | 含义                      |
 | ------- | ---- | ------------------------- |
+| `chassis_id` | — | 设备端 `system.chassis_id` 的值 |
 | `x`   | m    | 地图坐标系下的基座 X 坐标 |
 | `y`   | m    | 地图坐标系下的基座 Y 坐标 |
 | `yaw` | rad  | 地图坐标系下的基座航向角  |
@@ -77,19 +82,19 @@ find ./build/example -maxdepth 1 -type f \
 查看 Domain ID，并依次执行清故障、上电、松抱闸、抱闸、下电：
 
 ```bash
-./build/example/chassis_example_manager
+./build/example/chassis_example_manager chassis_001
 ```
 
 触发软件急停，使机器人进入紧急停止状态：
 
 ```bash
-./build/example/chassis_example_manager estop-on
+./build/example/chassis_example_manager chassis_001 estop-on
 ```
 
 解除软件急停：
 
 ```bash
-./build/example/chassis_example_manager estop-off
+./build/example/chassis_example_manager chassis_001 estop-off
 ```
 
 `estop-off` 仅发送软件急停解除请求，不能代替实体急停按钮复位。若实体急停按钮仍被
@@ -98,7 +103,7 @@ find ./build/example -maxdepth 1 -type f \
 设置机器人端 DDS Domain ID：
 
 ```bash
-./build/example/chassis_example_manager set-domain 0
+./build/example/chassis_example_manager chassis_001 set-domain 0
 ```
 
 参数含义：
@@ -117,7 +122,7 @@ find ./build/example -maxdepth 1 -type f \
 综合速度控制示例：
 
 ```bash
-./build/example/chassis_example_motion_control
+./build/example/chassis_example_motion_control chassis_001
 ```
 
 该示例会清故障、上电，设置较低的速度和加速度限制，然后依次执行：
@@ -130,12 +135,12 @@ find ./build/example -maxdepth 1 -type f \
 单项低速测试：
 
 ```bash
-./build/example/chassis_example_speed_translate
-./build/example/chassis_example_speed_ackermann
-./build/example/chassis_example_speed_holonomic
+./build/example/chassis_example_speed_translate chassis_001
+./build/example/chassis_example_speed_ackermann chassis_001
+./build/example/chassis_example_speed_holonomic chassis_001
 ```
 
-这些示例内部没有命令行参数，速度值写在源码中：
+这些示例只接收 `chassis_id`，速度值写在源码中：
 
 | 示例                                | 内部命令                           | 参数含义                                   |
 | ----------------------------------- | ---------------------------------- | ------------------------------------------ |
@@ -146,7 +151,7 @@ find ./build/example -maxdepth 1 -type f \
 ## 5. 键盘控制综合示例
 
 ```bash
-./build/example/chassis_example_keyboard_control
+./build/example/chassis_example_keyboard_control chassis_001
 ```
 
 该示例会清故障并上电，支持平移模式和阿克曼模式。运行时终端会原位刷新中英双语按键
@@ -200,32 +205,37 @@ find ./build/example -maxdepth 1 -type f \
 启动建图：
 
 ```bash
-MAP_DIR="$(mktemp -d /tmp/modi_chassis_mapping_XXXXXX)"
-./build/example/chassis_example_slam mapping "$MAP_DIR"
+./build/example/chassis_example_slam chassis_001 mapping 一楼大厅
 ```
 
-该底层示例用于诊断 SLAM，会把结果留在 `/tmp`。正式建图请通过底盘 Scope 的
-`/api/mapping/start` 和 `/api/mapping/stop` 完成跨文件系统校验归档。
+system 在内部固定临时目录中建图。按 `Ctrl-C` 后示例同步调用
+`SaveMapping("一楼大厅")`，完成校验、归档、加载并进入定位；SDK 不创建或传递
+临时目录。
 
 启动定位：
 
 ```bash
-MAP_DIR="${MODI_WS_ROOT:-$HOME/modi_ws}/maps/一楼大厅"
-./build/example/chassis_example_slam localization "$MAP_DIR"
+./build/example/chassis_example_slam chassis_001 localization 一楼大厅
 ```
 
-按 `Ctrl-C` 后示例会切回空闲模式。参数含义：
+定位流程先调用 `LoadMap("一楼大厅")`，再调用
+`SetSlamMode(SlamMode::kLocalization)`。参数含义：
 
-| 参数             | 含义                                        |
-| ---------------- | ------------------------------------------- |
-| `mapping`      | 启动建图，路径必须是 `/tmp/modi_chassis_mapping_*` 会话目录 |
-| `localization` | 启动定位，路径必须是 `$MODI_WS_ROOT/maps` 的直接子目录     |
-| `map_path`     | 受上述工作区边界约束的地图目录                            |
+| 参数             | 含义                                      |
+| ---------------- | ----------------------------------------- |
+| `chassis_id` | 设备端 `system.chassis_id` 的值 |
+| `mapping`        | 启动建图，临时目录由 chassis system 管理 |
+| `localization`   | 加载指定名称的正式地图并启动定位          |
+| `map_name`       | system 工作区中的地图名称，不是本机路径   |
+
+示例还会调用 `GetMapList(std::vector<std::string>*)` 打印 system 校验通过的地图名称，
+并用 `GetCurrentMapInfo(GridMapInfo*)` 查询当前地图名称和原始二维栅格。SDK 不返回地图
+路径或完整 PCD；三维静态地图文件由部署在 system 同机或共享地图目录的 Gateway 提供。
 
 在已加载地图且定位有效时，执行一次全向导航：
 
 ```bash
-./build/example/chassis_example_navigation
+./build/example/chassis_example_navigation chassis_001
 ```
 
 该示例内部目标点为 `{x=0.5, y=0.0, yaw=0.0}`，单位分别为 m、m、rad。
@@ -233,16 +243,15 @@ MAP_DIR="${MODI_WS_ROOT:-$HOME/modi_ws}/maps/一楼大厅"
 加载地图、等待定位有效后再导航：
 
 ```bash
-MODI_WS_ROOT=/home/user/modi_ws \
-  ./build/example/chassis_example_localization_navigation 一楼大厅
+./build/example/chassis_example_localization_navigation chassis_001 一楼大厅
 ```
 
-示例只接受地图名称，并将其解析为
-`$MODI_WS_ROOT/maps/<地图名称>`；不接受任意绝对路径。目标点仍是源码常量：
+示例只向远端 chassis system 发送地图名称，不读取 SDK 所在机器的文件系统，也不接受
+任意绝对路径。目标点仍是源码常量：
 
 | 项目          | 当前值              | 含义                         |
 | ------------- | ------------------- | ---------------------------- |
-| 第一个参数    | `一楼大厅`          | 工作区 `maps` 下的地图目录名 |
+| 第二个参数    | `一楼大厅`          | 工作区 `maps` 下的地图目录名 |
 | `kTarget`     | `{0.0, 0.0, 0.0}`   | 导航目标 `x`、`y`、`yaw`    |
 
 需要修改导航目标时调整源码中的 `kTarget` 并重新编译。
@@ -256,8 +265,8 @@ MODI_WS_ROOT=/home/user/modi_ws \
 3. `chassis_example_manager`：清故障并确认上电、下电流程正常。
 4. `chassis_example_speed_translate`：低速单项运动测试。
 5. `chassis_example_keyboard_control`：键盘低速联调平移和阿克曼运动。
-6. `chassis_example_slam mapping <map_path>`：建图。
-7. `chassis_example_slam localization <map_path>`：定位。
+6. `chassis_example_slam <chassis_id> mapping <map_name>`：建图并按名称保存。
+7. `chassis_example_slam <chassis_id> localization <map_name>`：按名称加载地图并定位。
 8. `chassis_example_navigation`：在地图和定位有效后再运行。
 
 若接口返回负值，先检查机器人端服务是否启动、DDS Domain ID 是否一致、网络是否互通、

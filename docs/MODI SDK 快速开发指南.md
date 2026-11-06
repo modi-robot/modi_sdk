@@ -445,14 +445,38 @@ int main() {
 
 通过 `client.Slam()` 或 `client.Chassis()->Slam()` 获取 `ChassisSlamApi`。典型顺序为：
 
-1. 建图时调用 `SelectSlamMode(SlamMode::kMapping, map_dir)`，其中
-   `map_dir` 必须是 `/tmp/modi_chassis_mapping_*` 会话目录；正式产品流程由
-   Scope 创建并管理该目录。
-2. 退出建图时调用 `SelectSlamMode(SlamMode::kIdle)` 并等待地图保存。
-3. 定位时调用 `LoadMap(map_dir)`；`map_dir` 必须是
-   `$MODI_WS_ROOT/maps` 的直接子目录，然后等待 `GetBasePose().valid` 为 `true`。
-4. 调用 `moveTranslateInMap`、`moveAckermannInMap` 或 `moveHolonomicInMap` 导航。
-5. 使用 `GetNavigationStatus()` 和 `GetGlobalPath()` 监控执行状态。
+1. 建图时调用 `SetSlamMode(SlamMode::kMapping)`；临时目录由
+   `modi_chassis_system` 管理，SDK 不传递路径。
+2. 建图完成后调用 `SaveMapping(map_name)` 同步保存，或调用
+   `DiscardMapping()` 主动放弃。保存成功后 system 会加载正式地图并进入定位。
+3. 使用已有地图定位时，先调用 `LoadMap(map_name)`，再调用
+   `SetSlamMode(SlamMode::kLocalization)`，然后等待 `GetBasePose().valid` 为 `true`。
+4. `map_name` 只是 system 工作区中的地图名称，不是客户端本机路径；SDK 可跨机
+   连接 chassis system，不读取客户端文件系统。
+5. 调用 `moveTranslateInMap`、`moveAckermannInMap` 或 `moveHolonomicInMap` 导航，
+   并使用 `GetNavigationStatus()` 和 `GetGlobalPath()` 监控执行状态。
+6. 调用 `GetSlamMode(&mode)` 时必须先检查返回码；结束定位可显式调用
+   `SetSlamMode(SlamMode::kIdle)`。
+
+地图列表只包含 chassis system 校验通过的地图名称；当前地图信息同时返回 system
+确认的名称和原始二维栅格，不包含 controller 内部使用的膨胀结果：
+
+```cpp
+std::vector<std::string> maps;
+const int list_ret = slam->GetMapList(&maps);
+if (list_ret != modi_sdk::ToInt(modi_sdk::SdkError::kOk)) {
+  // 处理地图列表查询失败。
+}
+
+modi_sdk::GridMapInfo current_map;
+const int map_ret = slam->GetCurrentMapInfo(&current_map);
+if (map_ret == modi_sdk::ToInt(modi_sdk::SdkError::kOk)) {
+  std::cout << "current map: " << current_map.name << '\n';
+}
+```
+
+`GetCurrentMapInfo()` 失败时输出结构会被清空。完整 PCD 不通过 SDK 或 DDS 传输；需要
+浏览器展示时，由与 system 共享地图目录的 Gateway 提供静态文件接口。
 
 完整代码见 `chassis_example_slam`、`chassis_example_localization_navigation` 和
 `chassis_example_navigation`。

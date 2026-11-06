@@ -5,19 +5,20 @@
  * 和 Slam 接口，调用 ClearFaults()、GetSafetyState()、PowerOn() 准备底盘，
  * 调用 Slam::LoadMap() 加载地图并等待 GetBasePose() 有效，再调用
  * moveHolonomicInMap() 导航；运行期间通过 GetSlamMode()、
- * GetNavigationStatus() 和 GetBasePose() 查询状态，退出时停止运动、下电
- * 并调用 client.Stop()。
+ * GetNavigationStatus() 和 GetBasePose() 查询状态，退出时停止 SLAM 和运动、
+ * 下电并调用 client.Stop()。
  *
- * 地图名称由第一个命令行参数传入，并从 $MODI_WS_ROOT/maps 解析。
+ * 用法：chassis_example_localization_navigation <chassis_id> <地图名称>。
+ * 通过首个命令行参数指定 chassis_id，DDS Domain ID 使用默认值 0。
+ * 地图名称由第二个命令行参数传入，地图目录由远端 system 解析。
  */
 
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <csignal>
-#include <cstdlib>
-#include <filesystem>
 #include <iostream>
+#include <string>
 #include <thread>
 
 #include "modi_sdk/robot_client.hpp"
@@ -33,31 +34,19 @@ void Stop(int) { g_running.store(false); }
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2 || argv[1][0] == '\0') {
-    std::cerr << "用法: " << argv[0] << " <地图名称>\n";
+  if (argc != 3 || argv[1][0] == '\0' || argv[2][0] == '\0') {
+    std::cerr << "用法: " << argv[0] << " <chassis_id> <地图名称>\n";
     return 2;
   }
-  const std::filesystem::path map_name(argv[1]);
-  if (map_name.is_absolute() || map_name.has_parent_path() ||
-      map_name.string().find('\\') != std::string::npos ||
-      map_name == "." || map_name == ".." ||
-      map_name.filename().string().front() == '.') {
-    std::cerr << "地图名称必须是 MODI_WS_ROOT/maps 下的直接子目录名\n";
-    return 2;
-  }
-  const char* workspace_root = std::getenv("MODI_WS_ROOT");
-  if (!workspace_root || workspace_root[0] == '\0') {
-    std::cerr << "请设置 MODI_WS_ROOT（例如 /home/user/modi_ws）\n";
-    return 2;
-  }
-  const auto map_directory =
-      std::filesystem::path(workspace_root) / "maps" / map_name;
+  const std::string map_name(argv[2]);
   // 注册信号处理，允许用户按 Ctrl-C 安全退出。
   std::signal(SIGINT, Stop);
   std::signal(SIGTERM, Stop);
 
   // 1. 创建并启动 SDK 客户端。
-  modi_sdk::RobotClient client;
+  modi_sdk::RobotClient::Config config;
+  config.target_robot_id = argv[1];
+  modi_sdk::RobotClient client(config);
   if (!client.Start()) {
     std::cerr << "RobotClient::Start() 失败\n";
     return 1;
@@ -79,16 +68,20 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  // 4. 调用 LoadMap() 加载地图并切换到底盘定位模式。
-  const int localization_result = slam->LoadMap(map_directory.string());
+  // 4. 按名称加载 system 端地图，再显式切换到底盘定位模式。
+  int localization_result = slam->LoadMap(map_name);
+  if (localization_result == 0) {
+    localization_result =
+        slam->SetSlamMode(modi_sdk::SlamMode::kLocalization);
+  }
   if (localization_result != 0) {
-    std::cerr << "LoadMap failed: " << localization_result << '\n';
+    std::cerr << "LoadMap/SetSlamMode failed: " << localization_result << '\n';
     (void)motion->StopMotion();
     (void)manager->PowerOff();
     client.Stop();
     return 1;
   }
-  std::cout << "Localization started with map: " << map_directory << '\n';
+  std::cout << "Localization started with map: " << map_name << '\n';
   std::cout << "Waiting for a valid localization pose...\n";
 
   // 5. 通过 GetSlamMode() 确认定位模式，并通过 GetBasePose() 等待有效位姿。
@@ -96,8 +89,12 @@ int main(int argc, char** argv) {
   const auto localization_deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(120);
   while (g_running.load() &&
-         slam->GetSlamMode() == modi_sdk::SlamMode::kLocalization &&
          std::chrono::steady_clock::now() < localization_deadline) {
+    modi_sdk::SlamMode slam_mode = modi_sdk::SlamMode::kIdle;
+    if (slam->GetSlamMode(&slam_mode) != 0 ||
+        slam_mode != modi_sdk::SlamMode::kLocalization) {
+      break;
+    }
     const auto pose = state->GetBasePose();
     if (pose.valid && std::isfinite(pose.x) && std::isfinite(pose.y) &&
         std::isfinite(pose.yaw)) {
@@ -112,6 +109,7 @@ int main(int argc, char** argv) {
     std::cerr << "Localization did not become valid within 120 seconds; "
                  "verify the MID360 power and network connection.\n";
     (void)motion->StopMotion();
+    (void)slam->SetSlamMode(modi_sdk::SlamMode::kIdle);
     (void)manager->PowerOff();
     client.Stop();
     return 1;
@@ -124,6 +122,7 @@ int main(int argc, char** argv) {
     std::cerr << "moveHolonomicInMap failed: "
               << navigation_result << '\n';
     (void)motion->StopMotion();
+    (void)slam->SetSlamMode(modi_sdk::SlamMode::kIdle);
     (void)manager->PowerOff();
     client.Stop();
     return 1;
@@ -134,8 +133,12 @@ int main(int argc, char** argv) {
       std::chrono::steady_clock::now() + std::chrono::seconds(120);
   bool observed_running = false;
   while (g_running.load() &&
-         slam->GetSlamMode() == modi_sdk::SlamMode::kLocalization &&
          std::chrono::steady_clock::now() < navigation_deadline) {
+    modi_sdk::SlamMode slam_mode = modi_sdk::SlamMode::kIdle;
+    if (slam->GetSlamMode(&slam_mode) != 0 ||
+        slam_mode != modi_sdk::SlamMode::kLocalization) {
+      break;
+    }
     const auto status = state->GetNavigationStatus();
     const auto pose = state->GetBasePose();
     std::cout << "navigation=" << static_cast<int>(status) << " pose=("
@@ -151,6 +154,7 @@ int main(int argc, char** argv) {
       // 导航完成后停止运动、下电并关闭 SDK 客户端。
       std::cout << "Navigation finished\n";
       (void)motion->StopMotion();
+      (void)slam->SetSlamMode(modi_sdk::SlamMode::kIdle);
       (void)manager->PowerOff();
       client.Stop();
       return 0;
@@ -158,6 +162,7 @@ int main(int argc, char** argv) {
     if (status == modi_sdk::ChassisNavigationStatus::kError) {
       std::cerr << "Navigation failed\n";
       (void)motion->StopMotion();
+      (void)slam->SetSlamMode(modi_sdk::SlamMode::kIdle);
       (void)manager->PowerOff();
       client.Stop();
       return 1;
@@ -167,11 +172,17 @@ int main(int argc, char** argv) {
 
   // 中断、模式异常或超时时，都执行统一的停止、下电和退出流程。
   if (!g_running.load()) std::cerr << "Interrupted by user\n";
-  else if (slam->GetSlamMode() != modi_sdk::SlamMode::kLocalization)
-    std::cerr << "Localization process exited unexpectedly\n";
-  else
+  else {
+    modi_sdk::SlamMode slam_mode = modi_sdk::SlamMode::kIdle;
+    if (slam->GetSlamMode(&slam_mode) != 0 ||
+        slam_mode != modi_sdk::SlamMode::kLocalization) {
+      std::cerr << "Localization process exited unexpectedly\n";
+    } else {
     std::cerr << "Navigation timed out after 120 seconds\n";
+    }
+  }
   (void)motion->StopMotion();
+  (void)slam->SetSlamMode(modi_sdk::SlamMode::kIdle);
   (void)manager->PowerOff();
   client.Stop();
   return 1;

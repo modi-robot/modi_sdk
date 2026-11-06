@@ -66,7 +66,7 @@
 | `Algo()` | `std::shared_ptr<AlgoApi>` | 运动学、动力学和标定。 |
 | `Manager()` | `std::shared_ptr<ManagerApi>` | 电源、安全和故障管理。 |
 | `Io()` | `std::shared_ptr<IoApi>` | 数字 IO。 |
-| `Eef()` | `std::shared_ptr<EefApi>` | 夹爪、灵巧手等硬件末端。 |
+| `Eef()` | `std::shared_ptr<EefApi>` | 工具板 EG2 夹爪。 |
 
 ### 3.1 ModelApi
 
@@ -77,8 +77,13 @@
 | `GetAllJointNames()` | 无 | 全部关节名；失败为空 | 顺序与系统配置一致。 |
 | `GetActuatorJointNames()` | 无 | 驱动关节名；失败为空 | 与状态和目标数组顺序一致。 |
 | `GetActuatorJointLimits(lower, upper)` | `lower`、`upper`：输出上下限 | `0` 成功，负值失败 | 单位 rad。 |
+| `GetActuatorJointVelocityLimits(limits)` | 输出每关节最大速度幅值 | `0` 成功，失败清空输出 | rad/s，来自 WBC Model 的 URDF velocity。 |
+| `GetActuatorJointCurrentLimits(limits)` | 输出每关节最大电流幅值 | `0` 成功，失败清空输出 | A，来自 WBC Model 的 URDF effort 原值（本项目约定）。 |
+| `GetActuatorJointAccelerationLimits(limits)` | 输出每关节最大加速度幅值 | `0` 成功，失败清空输出 | rad/s²，来自 RobotConfig 注入的 WBC 配置。 |
+| `GetEndEffectorVelocityLimits(translation, rotation)` | 输出各末端平移和旋转速度模长上限 | `0` 成功，失败清空两个输出 | m/s、rad/s，来自 RobotConfig 注入的 WBC 配置；单臂一项、双臂两项。 |
 | `GetEndEffectorNames()` | 无 | 末端坐标系名称；失败为空 | 外层末端数组顺序依据。 |
-| `GetRobotNames()` | 无 | 机器人名称；失败为空 | 与配置顺序一致。 |
+| `GetRobotName()` | 无 | 顶层描述配置名称；失败为空 | 对应 `modi_config.yaml` 的 `system.robot_name`。 |
+| `GetArmNames()` | 无 | 机械臂模型名称；失败为空 | 按 `arm.groups[]` 配置顺序返回。 |
 | `AddToolModel(tool_name, ee_name, frame_xyzrpy, mass, com, inertia)` | 工具名、末端名、位姿、质量 kg、质心 m、惯量 | `0` 成功，负值失败 | 添加工具与负载模型。 |
 | `RemoveToolModel(tool_name)` | `tool_name`：工具名 | `0` 成功，负值失败 | 删除工具模型。 |
 | `GetTcpOffset(name, pose)` | `name`：工具/末端名；`pose`：输出位姿 | `0` 成功，负值失败 | 获取 TCP 偏移。 |
@@ -86,15 +91,20 @@
 | `GetControlPeriod()` | 无 | 控制周期，单位 s；失败时非正值 | 获取系统控制周期。 |
 | `LoadCollisionPairs(path)` | `path`：碰撞对配置文件 | `0` 成功，负值失败 | 加载自碰撞检测对。 |
 | `RemoveAllCollisionPairs()` | 无 | `0` 成功，负值失败 | 清空碰撞检测对。 |
-| `GetFbasePosition()` | 无 | 每个机型的基座位姿；失败为空 | 外层顺序与 `robot_name` 一致。 |
-| `SetInstallationPosition(poses)` | `poses`：每机型一个六维位姿 | `0` 成功，负值失败 | 设置机器人安装位姿。 |
+| `GetFbasePosition()` | 无 | 每条机械臂的基座位姿；失败为空 | 外层顺序与 `GetArmNames()` 一致。 |
+| `SetInstallationPosition(poses)` | `poses`：每条机械臂一个六维位姿 | `0` 成功，负值失败 | 顺序与 `GetArmNames()` 一致。 |
 
 ### 3.2 StateApi
+
+以上关节限制按 `GetActuatorJointNames()` 排列，末端限制按 `GetEndEffectorNames()`
+排列，双臂依次拼接。任一臂数据不可用则整个查询失败，不返回部分结果。
+新增接口只提供限制数据，不增加运动规划器的速度或加速度限速行为。
 
 以下关节数组按机器人、臂组、关节的系统配置顺序排列。
 
 | 接口 | 参数说明 | 返回值 | 说明 |
 |---|---|---|---|
+| `GetControlMode()` | 无 | `std::vector<ControlMode>`；失败为空 | 每臂一个模式，与 `ModelApi::GetArmNames()` 同序；未知值为 `kUnknown`。 |
 | `GetActuatorJointPositions()` | 无 | 关节位置数组，rad；失败为空 | 驱动关节位置。 |
 | `GetActuatorJointVelocities()` | 无 | 关节速度数组，rad/s；失败为空 | 驱动关节速度。 |
 | `GetActuatorJointAccelerations()` | 无 | 关节加速度数组，rad/s²；失败为空 | 驱动关节加速度。 |
@@ -127,7 +137,7 @@
 | `SpeedJoint(joint_velocities, acceleration=0.5)` | 关节速度；加速度 | `0` 成功，负值失败 | 关节速度控制。 |
 | `ServoLine(target_poses, period)` | 每末端目标位姿；周期 s | `0` 成功，负值失败 | 周期末端位姿控制。 |
 | `ServoJoint(target_joints, period, target_velocity={}, target_acceleration={})` | 位置；周期 s；可选速度和加速度 | `0` 成功，负值失败 | 周期关节控制。 |
-| `StopMotion(acceleration=2.0)` | 停止加速度 | `0` 成功，负值失败 | 停止当前运动。 |
+| `StopMotion(acceleration=8.0)` | 停止减速度 | `0` 成功，负值失败 | 停止当前运动。 |
 | `GetPlannerStatus()` | 无 | `PlannerStatus` 整数值；失败 `-1` | 获取规划器状态。 |
 
 ### 3.4 ForceApi
@@ -138,6 +148,10 @@
 |---|---|---|---|
 | `FcEnable(controller_type=0)` | `ControllerType` 对应整数 | `0` 成功，负值失败 | 启用力控。 |
 | `FcDisable()` | 无 | `0` 成功，负值失败 | 禁用力控。 |
+| `EnableFreeDrive(arm_name)` | `arm_name` 必须来自 `ModelApi::GetArmNames()` | `0` 成功，负值失败 | 为指定机械臂启用拖动示教；顶层聚合型号不可作为臂名。 |
+| `DisableFreeDrive(arm_name)` | `arm_name` 必须来自 `ModelApi::GetArmNames()` | `0` 成功，负值失败 | 关闭拖动示教，并以退出瞬间实测位置切回 CSP 保持。 |
+| `IsFreeDriveEnabled(arm_name)` | `arm_name` 必须来自 `ModelApi::GetArmNames()` | 完整进入 CST 且实时力矩持续有效时为 `true`；查询失败也为 `false` | 查询指定机械臂拖动示教状态。 |
+| `GetBaseGravity(arm_name)` | `arm_name` 必须来自 `ModelApi::GetArmNames()` | `{gx, gy, gz}`，失败为空 | 从 HAL 获取指定机械臂 URDF `base_link` 中的测量重力，单位 `m/s²`；已应用 `gravity_sensor_position` 的 sensor→base 旋转。拖动启用时后端再结合 `T_world_base` 转为 world 重力传给 WBC。DDS 服务为 `/Robot/Force/GetBaseGravity`。 |
 | `SetTaskFrame(types, frame_offsets)` | 坐标系类型；每末端六维偏移 | `0` 成功，负值失败 | 设置任务坐标系。 |
 | `SetRefPoint(ref_points)` | 每末端参考点 | `0` 成功，负值失败 | 设置力控参考点。 |
 | `SetGoalWrench(wrenches)` | 每末端六维目标力 | `0` 成功，负值失败 | 设置目标力。 |
@@ -150,6 +164,11 @@
 | `SetNullSpaceParams(damps, stiffnesses)` | 零空间阻尼、刚度 | `0` 成功，负值失败 | 设置零空间参数。 |
 | `GetGoalWrenches(wrenches)` | `wrenches`：输出参数 | `0` 成功，负值失败 | 获取目标六维力。 |
 | `GetRefPointWrenches(wrenches)` | `wrenches`：输出参数 | `0` 成功，负值失败 | 获取参考点六维力。 |
+
+拖动示教按机械臂独立启停。聚合运动或传统力控命令会跳过已经进入拖动示教的臂，
+其余臂仍可运行；所有目标臂均处于拖动示教时返回模式冲突。
+`ManagerApi::PowerOff()`、`BrakeLock()`、急停、故障和进程退出都会先关闭所有臂的
+拖动示教，停止 CST 力矩输出，再继续抱闸和断使能。
 
 ### 3.5 AlgoApi
 
@@ -179,6 +198,8 @@
 | `PowerOn()` / `PowerOff()` | 无 | `0` 成功，负值失败 | 机器人上下电。 |
 | `BrakeRelease()` / `BrakeLock()` | 无 | `0` 成功，负值失败 | 释放或锁定抱闸。 |
 | `ClearFaults()` | 无 | `0` 成功，负值失败 | 清除可恢复故障。 |
+| `GetCollisionSensitivity(arm_name, sensitivity)` | 机械臂名称；`CollisionSensitivity&` 输出 | `0` 成功，负值失败；失败输出 -1 | 读取指定臂碰撞等级：Off=0、Low=1、Medium=2、High=3；空名称要求各臂等级一致，否则返回错误。 |
+| `SetCollisionSensitivity(arm_name, sensitivity)` | 机械臂名称；`CollisionSensitivity` | `0` 成功，负值失败 | 立即应用到指定臂；显式传入空名称时应用到全部臂。Scope 按臂保存到 `config/robot_config.yaml`，与安装位姿同一路径，并在启动时通过 SDK 恢复。 |
 | `GetRobotDomainId()` | 无 | Domain ID；失败 `-1` | 获取配置中的 Domain ID。 |
 | `SetRobotDomainId(domain_id)` | 新 Domain ID | `0` 成功，负值失败 | 修改后需重启 System/SDK。 |
 | `Estop(trigger)` | `true` 触发，`false` 清除 | `0` 成功，负值失败 | 控制急停。 |
@@ -196,23 +217,10 @@
 
 ### 3.8 EefApi
 
-数组按末端执行器驱动器顺序排列。
-
-| 接口 | 参数说明 | 返回值 | 说明 |
-|---|---|---|---|
-| `GetActuatorCount()` | 无 | 驱动器数量；失败为负值 | 获取末端驱动器数量。 |
-| `GetActuatorRadians()` / `GetFingerRadians()` | 无 | 角度数组 rad；失败为空 | 获取驱动器/手指角度。 |
-| `GetActuatorForce()` | 无 | 实际力数组，N；失败为空 | 获取末端驱动器力反馈。 |
-| `GetActuatorCurrent()` | 无 | 实际电流数组，A；失败为空 | 获取末端驱动器电流反馈。 |
-| `GetActuatorTemperature()` | 无 | 温度数组，℃；失败为空 | 获取末端驱动器温度。 |
-| `GetActuatorFaultCode()` | 无 | `int16_t` 原始故障码数组；失败为空 | 含义取决于末端型号，见 5.8 节。 |
-| `GetActuatorStatus()` | 无 | `int16_t` 状态码数组；失败为空 | 标准状态值见 5.8 节。 |
-| `SetActuatorAngle(angle)` | 每驱动器目标角度，rad | `0` 成功，负值失败 | 设置角度。 |
-| `SetActuatorForce(force)` | 每驱动器目标力，N | `0` 成功，负值失败 | 设置力。 |
-| `SetActuatorSpeed(speed)` | 每驱动器目标角速度，rad/s | `0` 成功，负值失败 | 设置速度。 |
-| `SetMotionControlEnable(enable)` | 是否启用运动控制 | `0` 成功，负值失败 | 控制末端使能。 |
-| `ClearFault()` | 无 | `0` 成功，负值失败 | 清除末端故障。 |
-| `EmergencyStop(enable)` | `true` 触发，`false` 清除 | `0` 成功，负值失败 | 控制末端急停。 |
+通过机械臂工具板 RS485 连接的 EG2 夹爪，使用同一个 `EefApi` 下的
+`GetToolGripper*`、`SetToolGripper*` 和 `ClearToolGripperFault` 接口。
+这些接口按机械臂名称定位，每臂使用第一块工具板、夹爪地址 1，具体参数、反馈结构和命令行示例见
+[工具板夹爪接口](工具板夹爪接口.md)。
 
 ## 4. ChassisApi
 
@@ -234,12 +242,88 @@
 |---|---|---|---|
 | `GetSteeringPositions()` | 无 | 转向位置 rad；失败为空 | 顺序与转向关节名一致。 |
 | `GetWheelSpeeds()` | 无 | 轮速 rad/s；失败为空 | 顺序与轮关节名一致。 |
+| `GetWheelPositions()` | 无 | 轮毂角度 rad；失败或后端不支持时为空 | 顺序与轮关节名一致，保留驱动上报原值，不做单圈归一化。 |
 | `GetBaseVelocity()` | 无 | `ChassisBaseVelocity` | 包含 `linear_x/y`、`angular_z`。 |
 | `GetBasePose()` | 无 | `ChassisBasePose` | 使用前检查 `valid`。 |
+| `GetBatteryCurrents()` | 无 | `std::vector<double>`；失败为空 | 电流（A），顺序见 5.9 节。 |
+| `GetBatteryVoltages()` | 无 | `std::vector<double>`；失败为空 | 电压（V），顺序见 5.9 节。 |
+| `GetBatterySoc()` | 无 | `std::vector<double>`；失败为空 | 相对 SOC（%），顺序见 5.9 节。 |
+| `GetBatteryTemperatures()` | 无 | `std::vector<double>`；失败为空 | 温度（℃），顺序见 5.9 节。 |
+| `HasBattery()` | 无 | `std::vector<bool>`；失败为空 | 该舱是否装有电池，`true`=有电池。 |
+| `GetBatteryChargingStates()` | 无 | `std::vector<ChargingState>`；失败为空 | `kNotConnected`/`kConnected`/`kCharging`/`kFullyCharged`；无电池时为 `kNotConnected`。 |
+| `GetBatteryErrorBits()` | 无 | `std::vector<std::uint32_t>`；失败为空 | 错误位图（uint32），顺序见 5.9 节。 |
+| `GetBatteryWarningBits()` | 无 | `std::vector<std::uint32_t>`；失败为空 | 警告位图（uint32），顺序见 5.9 节。 |
+| `GetUltrasonicRadarData()` | 无 | `UltrasonicRadarData` | 地址 1 到 8 的最新距离（m）；无有效距离或查询失败为 `-1.0`。 |
 | `GetServoState()` | 无 | `ServoState` 数组；失败为空 | 轮关节在前、转向关节在后；数值见 5.3 节。 |
 | `GetJointFaultCode()` | 无 | `FaultCode` 数组；失败为空 | 当前故障，数值见 5.4 节。 |
 | `GetJointEmcyCode()` | 无 | `FaultCode` 数组；无事件为 `kNone` | 读取后消费事件，数值见 5.4 节。 |
 | `GetJointWarningCode()` | 无 | `WarningCode` 数组；失败为空 | 当前警告，数值见 5.5 节。 |
+
+#### 4.2.1 电池分项查询
+
+各接口只读取最新缓存，不发送 CAN 查询或充电控制。
+数组顺序统一为服务端电池舱 `battery.id`；例如 `[1]` 时返回数组第 0 项代表舱 2。
+未收到报文时返回默认 `0`；单块电池舱超过 8 秒未收到有效 CAN 报文时，
+该舱全部电池分项返回零值，表示电池舱断联或未插入。
+服务调用失败返回空数组，服务端没有电池 HAL 时返回 `-113002`，SDK 沿用通用服务错误日志。
+不同分项查询独立执行，不保证各项对应同一接收时刻。
+
+```cpp
+modi_sdk::RobotClient client;
+if (!client.Start()) return 1;
+auto state = client.Chassis()->State();
+const auto currents = state->GetBatteryCurrents();
+const auto voltages = state->GetBatteryVoltages();
+const auto soc = state->GetBatterySoc();
+const auto temperatures = state->GetBatteryTemperatures();
+client.Stop();
+```
+
+存在 `battery` 配置块即创建并初始化电池 HAL；删除整个配置块即不启用。
+`modi_chassis_1` 保留电池配置，`modi_chassis` 没有电池配置。
+无需 `enabled` 开关，也没有电池 `timeout_ms` 参数。
+
+```yaml
+battery:
+  type: "jdbmscan"
+  bus: "can1"
+  id: [0, 1]
+```
+
+| 参数（均必填） | 当前参数文件值 | 作用 |
+| --- | --- | --- |
+| `type` | `"jdbmscan"` | 选择实现《JKJQ整车&充电CAN协议》电池读取的后端 |
+| `bus` | `"can1"` | 电池 SocketCAN 接口，与 `chassis.bus` 独立；驱动不设置波特率 |
+| `id` | `[0, 1]` | 返回的电池舱及数组顺序；0 为舱 1，1 为舱 2，非空且不能重复 |
+
+DDS 发布间隔固定为 1000 ms，话题约 1 Hz 发布，不提供 YAML 参数。
+协议状态 1 为 300 ms，状态 2 和错误/警告为 1000 ms；重复发布缓存不会增加测量次数。
+
+电池 `type`、`bus`、`id` 三个参数必须在 YAML 中提供；缺项、`battery: {}` 或非法值会报错。
+电池改接 `can0` 时只修改 `battery.bus`；
+机械臂或底盘关节使用各自的 `bus`。配置在启动时读取，修改后需重启服务端。
+运行时从所选 `modi_description` 安装目录加载机型 YAML，修改源码模板后需更新安装资源。
+
+持续读取示例：`ros2 run modi_sdk chassis_example_battery_state chassis_001`。
+首个参数为设备端 `system.chassis_id`，请将 `chassis_001` 换成实际值；示例 DDS Domain ID 默认使用 `0`。
+
+#### 4.2.2 超声波雷达距离查询
+
+通过 `client.Chassis()->State()->GetUltrasonicRadarData()` 查询八路最新距离，
+调用方式与其他 `ChassisStateApi::Get...()` 接口一致。SDK 内部通过
+`/Chassis/State/GetUltrasonicRadarData` 服务读取服务端 HAL 最新缓存，应用层
+不需要注册话题、回调或使用生成消息类型。
+
+HAL 使用独立线程逐路发送 Modbus 请求，每路完整回复或超时后等待至少 5 ms
+总线静默，再查询下一路。某一路处理完成后立即更新对应缓存，不等待其余地址，
+因此 `distance_1()` 到 `distance_8()` 始终是地址 1 到 8 的最新米制距离；
+无有效距离时为 `-1.0`。量程由服务端机型配置的 `range_m` 决定，支持 `0.5`、
+`1.5`、`2.5`、`3.5`、`5.0 m`。服务查询只复制 HAL 的八路原子缓存，不访问串口，
+也不等待当前轮询完成。`UltrasonicRadarData` 提供 `distance_1` 到
+`distance_8` 八个 `double` 成员；查询失败时返回的八路距离均为 `-1.0`。
+
+完整调用示例：`example/chassis_example/example_ultrasonic_radar.cpp`。
+运行：`ros2 run modi_sdk chassis_example_ultrasonic_radar chassis_001`。
 
 ### 4.3 ChassisMotionApi
 
@@ -252,8 +336,47 @@
 
 ### 4.4 ChassisManagerApi
 
+回充会话控制：
+
+```cpp
+auto manager = client.Chassis()->Manager();
+std::string message;
+int result = manager->StartDocking(&message);  // 启动回桩、充电和满电待机循环
+modi_sdk::ChassisDockingState docking;
+result = manager->GetDockingState(&docking);
+result = manager->CancelDocking(&message);      // 请求停止回充运动及充电
+// result == 0 仅表示关闭请求已接受；继续查询，直到 docking.active == false。
+
+// 运行时启用 0.8 m 安全距离，并读回当前设置。
+result = manager->SetSafetyDistance(true, 0.8);
+bool safety_enabled = false;
+double safety_distance_m = 0.0;
+result = manager->GetSafetyDistance(safety_enabled, safety_distance_m);
+```
+
+`StartDocking()` 先检查充电器连接：至少一仓有电池且所有在位仓都已连接时，
+服务端确认停稳后直接充电，不要求定位或配置桩位；未连接时才要求已有定位和有效
+充电桩配置，并依次完成回桩、精对接、接触检查和充电。两条路径接受新任务时均初始化
+`charged_once=false`。首次回桩接触检查最多等待
+`charging_timeout_s`（默认 10 秒），横向搜索每步停稳后最多检查 3 秒，检测到连接即继续。
+未连接则沿用横向触点搜索，达到原有 10 步上限仍未连接才报错关闭。
+至少有一仓电池且所有有电池的仓都连接充电器才允许充电。
+本轮收到充满反馈后，服务端设置 `charged_once=true`、关闭充电并保持满电待机；
+有效参与电池 SOC 低于 `99%` 时再次充电。满电待机仍属于活动会话。
+`CancelDocking()` 可在任意阶段请求关闭；服务端停止运动并确认禁止充电后，
+`active` 才变为 `false`。充电或满电待机时连接丢失，或触点搜索达到上限仍未连接，
+也会进入关闭流程。
+SDK 通过回充会话管理充电，不提供直接充电开关接口。
+
 | 接口 | 参数说明 | 返回值 | 说明 |
 |---|---|---|---|
+| `StartDocking(message=nullptr)` | 可选的提示输出指针 | `int`：`0` 请求接受，负值为错误码 | 启动新的回充会话。 |
+| `CancelDocking(message=nullptr)` | 可选的提示输出指针 | `int`：`0` 请求接受，负值为错误码 | 请求结束回充会话；轮询 `active=false` 确认关闭。 |
+| `GetDockingState(state, timeout_ms=5000)` | 状态输出指针、查询超时毫秒数 | `int`：`0` 查询成功，负值为错误码 | 读取回充会话，失败保持输出不变。 |
+| `GetDockingStateQuiet(timeout_ms, state)` | 查询超时毫秒数、状态输出指针 | 同上 | 无错误日志的轮询版本。 |
+| `SetSafetyDistance(enabled, distance_m)` | 是否启用、有限距离（m） | `int`：`0` 成功，负值为错误码 | 运行时设置安全距离并设置自动安全运动禁止开关；距离必须不小于 `0.01 m`，无上限。 |
+| `SetSafetyStopEnabled(enabled)` | `bool` | `int`：`0` 成功，负值为错误码 | 单独启用或关闭自动安全运动禁止；不会触发或清除手动急停。 |
+| `GetSafetyDistance(enabled, distance_m)` | 两个输出引用 | `int`：`0` 成功，负值为错误码 | 读取当前运行时设置；失败时不修改输出值。 |
 | `PowerOn()` / `PowerOff()` | 无 | `0` 成功，负值失败 | 底盘上下电。 |
 | `BrakeRelease()` / `BrakeLock()` | 无 | `0` 成功，负值失败 | 释放或锁定抱闸。 |
 | `ClearFaults()` | 无 | `0` 成功，负值失败 | 清除底盘故障。 |
@@ -262,6 +385,29 @@
 | `Estop(trigger)` | `true` 触发，`false` 清除 | `0` 成功，负值失败 | 控制底盘急停。 |
 | `GetSafetyState()` | 无 | `SafetyState` 整数；失败 `-1` | 获取安全状态机。 |
 | `GetChassisState()` | 无 | Init=0、PowerOff=1、PowerOn=2、Running=3；失败 `-1` | 获取底盘状态机。 |
+
+`ChassisDockingState` 包含：
+
+| 字段 | 含义 |
+|---|---|
+| `state` / `message` | 当前阶段及说明；充电相关阶段为 `charging`、`charged_waiting`、`closing`、`closed`，任务失败为 `failed`。 |
+| `active` | 回桩、充电、满电待机和关闭确认期间为 `true`；关闭完成或失败终态为 `false`。 |
+| `charged_once` | 本次会话是否充满过，只在接受新会话时重置。 |
+| `charging_enabled` | 服务端是否已成功允许本轮充电；实际电流需读取电池状态。 |
+| `recharge_soc_threshold` | 满电待机后的再充阈值，单位 %，当前为 `99.0`。 |
+| `task_error_code` | 回充任务错误码，独立于查询接口返回码；查询成功也应检查此字段。 |
+| `target_distance_m` / `travelled_distance_m` | 精对接目标距离和已行进距离，单位 m。 |
+| `safety_override_active` | 回充期间是否使用安全距离覆盖设置。 |
+
+安全距离设置立即生效但不改写 YAML；底盘节点重启后恢复
+`system.safety_distance` 中的默认设置。`0.20 m` 是传感器融合分界：不大于
+`0.20 m` 的近场距离由超声波判断；大于 `0.20 m` 的范围由激光雷达判断，
+用户配置距离可以从 `0.01 m` 开始且无上限（实际有效范围受传感器量程和点云覆盖范围限制）。
+
+安全判断会读取八路超声波中的有效近场测量，并结合激光点云的远场占用栅格；
+无效的超声波读数不会被当作障碍。激光安全点云先转换到底盘坐标系，再按
+`system.safety_distance.lidar_min_height_m` 和 `lidar_max_height_m` 裁剪高度，
+默认范围为 `-0.10～1.50 m`。
 
 ## 5. 数据结构与数值含义
 
@@ -302,6 +448,17 @@
 | `kFault` | `0x07` | `7` | 处于故障状态，需排除并清除故障。 |
 | `kInitFault` | `0x08` | `8` | 初始化阶段发生故障。 |
 | `kUnknown` | `0xFF` | `255` | 未知、无效或当前后端不支持的状态。 |
+
+### 5.3.1 ChargingState
+
+`GetBatteryChargingStates()` 返回 `modi_sdk::ChargingState` 枚举，直接按枚举判断；DDS 话题和服务按字符串名上报，SDK 负责解析。
+
+| 枚举值 | 数值 | 含义 |
+|---|---:|---|
+| `kNotConnected` | `0` | 该舱无电池，或充电器未连接。 |
+| `kConnected` | `1` | 充电器已连接，尚未检测到充电电流。 |
+| `kCharging` | `2` | 充电器已连接，且检测到充电电流（大于 0.1 A）。 |
+| `kFullyCharged` | `3` | BMS `0x180` 报告整组充电完成，映射当前参与充电的舱位。 |
 
 ### 5.4 FaultCode
 
@@ -394,21 +551,40 @@
 `modi_system_msgs` 没有发布对应的枚举表。因此该值应视为底盘控制器原始错误码，
 不能转换为 `FaultCode`，需要结合所部署底盘控制器/驱动版本的错误码表解释。
 
-`EefApi::GetActuatorFaultCode()` 返回末端设备通道原始故障码。当前公共 SDK 没有为所有
-末端型号统一故障枚举，必须查询对应末端设备手册，不能套用关节 `FaultCode`。
+### 5.9 电池分项数据
 
-当前标准末端 HAL 对 `GetActuatorStatus()` 使用以下状态值；若部署其他末端型号，应以
-该型号设备协议为准，且不能套用关节 `ServoState`。
+| SDK / HAL 接口 | SDK 返回值 | 含义 |
+| --- | --- | --- |
+| `GetBatteryCurrents()` | `std::vector<double>` | 电流，A |
+| `GetBatteryVoltages()` | `std::vector<double>` | 电压，V |
+| `GetBatterySoc()` | `std::vector<double>` | 相对 SOC，% |
+| `GetBatteryTemperatures()` | `std::vector<double>` | 温度，℃ |
+| `HasBattery()` | `std::vector<bool>` | 该舱是否装有电池，`true`=有电池 |
+| `GetBatteryChargingStates()` | `std::vector<ChargingState>` | `kNotConnected`/`kConnected`/`kCharging`/`kFullyCharged`；无电池时为 `kNotConnected` |
+| `GetBatteryErrorBits()` | `std::vector<std::uint32_t>` | 错误位图，uint32 |
+| `GetBatteryWarningBits()` | `std::vector<std::uint32_t>` | 警告位图，uint32 |
 
-| 末端状态值 | 含义 |
-|---:|---|
-| `0` | Releasing：正在松开。 |
-| `1` | Grasping：正在抓取。 |
-| `2` | PositionReached：位置到位停止。 |
-| `3` | ForceReached：力控到位停止。 |
-| `5` | OverCurrent：电流保护停止。 |
-| `6` | Stall：电缸堵转停止。 |
-| `7` | Fault：电缸故障停止。 |
+各接口只读取最新缓存，不发送 CAN 查询或充电控制。
+数组顺序统一为服务端 `battery.id`；例如 `[1]` 时返回数组第 0 项代表舱 2。
+`id=0` 是舱 1，`id=1` 是舱 2，与插入电池的身份无关。收到该舱任意有效
+状态 1、状态 2 或错误/警告报文即可刷新计时；超过固定 8 秒时清空整舱数据，
+包括 `GetBatteryChargingStates()` 返回 `kNotConnected`、`HasBattery()` 返回
+`false`，返回数组长度和顺序保持不变。
+重新插入只更新新收字段，不恢复拔出前的旧字段；超时阈值不提供配置项。
+未收到报文时返回默认 `0`；单块电池超过 8 秒未收到有效 CAN 报文时，
+该块全部电池分项返回零值，表示电池仓断联或未插入。
+服务调用失败返回空数组，服务端没有电池 HAL 时返回 `-113002`，SDK 沿用通用服务错误日志。
+不同分项查询独立执行，不保证各项对应同一接收时刻。
+
+读取舱 1（ID 0）的 `0x17FF2000～2002` 和舱 2（ID 1）的 `0x18FF2000～2002`。
+电流按 U16LE ×0.1−1000 A 换算，相对 SOC 直接使用 BMS Byte 6，不读取绝对 SOC。
+`GetBatteryChargingStates()` 返回 `ChargingState` 枚举：`kNotConnected` 表示该舱无电池
+或充电器未连接；`kConnected` 表示充电器已连接但尚未检测到充电电流；
+`kCharging` 表示已连接且电流超过 0.1 A；`kFullyCharged` 来自 BMS `0x180` 的整组充电完成标志，映射当前参与充电的舱位。
+该标志不是各舱独立满电报文，也不由 SOC 达到 100% 或电流降低推断；`kConnected` 不能证明存在充电电流。
+`HasBattery()` 只表示该舱是否在 8 秒内收到过有效报文，与 SOC 是否为零无关。
+回充会话由服务端统一管理充电使能，至少存在一块电池且所有有电池的仓均连接
+充电器才能开启；仅舱 1、仅舱 2 或两仓都有电池时均按这个条件检查。
 
 ## 6. 实时话题参考
 
@@ -449,6 +625,16 @@ DDS 实时话题，用户不需要手动添加 `rt/` 前缀。
 | `ChassisErrorCode` | `error_code()` | `int32`，底盘控制器原始错误码；当前公共接口未定义统一枚举，参见 5.8 节。 |
 | `ChassisSystemState` | `state()` | `int32`：Init=0、PowerOff=1、PowerOn=2、Running=3。 |
 
+| `BatteryCurrents` | `battery_currents()` | 电流数组，A，顺序为 `battery.id`。 |
+| `BatteryVoltages` | `battery_voltages()` | 电压数组，V，顺序为 `battery.id`。 |
+| `BatterySoc` | `battery_soc()` | 相对 SOC数组，%，顺序为 `battery.id`。 |
+| `BatteryTemperatures` | `battery_temperatures()` | 温度数组，℃，顺序为 `battery.id`。 |
+| `BatteryPresence` | `battery_present()` | 该舱是否有电池，bool 数组，顺序为 `battery.id`。 |
+| `BatteryChargingStates` | `battery_charging_states()` | 字符串数组，取值 `kNotConnected`/`kConnected`/`kCharging`/`kFullyCharged`，顺序为 `battery.id`。 |
+| `BatteryErrorBits` | `battery_error_bits()` | 错误位图数组，uint32，顺序为 `battery.id`。 |
+| `BatteryWarningBits` | `battery_warning_bits()` | 警告位图数组，uint32，顺序为 `battery.id`。 |
+| `UltrasonicRadarState` | `distance_1()` ... `distance_8()` | 地址 1 到 8 的最新距离，单位 m，无有效距离为 -1.0。 |
+
 ### 6.2 机器人实时订阅话题
 
 这些话题可传给 `RobotClient::RegisterSubscriber()`。
@@ -478,11 +664,6 @@ DDS 实时话题，用户不需要手动添加 `rt/` 前缀。
 | `/Robot/Motion/PlannerStatus` | `PlannerStatus` | `status: int32` | 判断规划器空闲、运行、完成或错误。 |
 | `/Robot/Manager/SafetyState` | `SafetyState` | `state: int32` | 监控 Normal、急停、故障和恢复状态。 |
 | `/Robot/Manager/RobotState` | `RobotState` | `state: int32` | 监控机器人上下电和运行状态。 |
-| `/Robot/Eef/ActuatorRadians` | `DoubleArray` | `data: double[]`，rad | 获取末端驱动器角度。 |
-| `/Robot/Eef/FingerRadians` | `DoubleArray` | `data: double[]`，rad | 获取手指关节角度。 |
-| `/Robot/Eef/ActuatorForce` | `DoubleArray` | `data: double[]`，N | 获取末端驱动器力。 |
-| `/Robot/Eef/ActuatorCurrent` | `DoubleArray` | `data: double[]`，A | 获取末端驱动器电流。 |
-| `/Robot/Eef/ActuatorTemperature` | `DoubleArray` | `data: double[]`，℃ | 获取末端驱动器温度。 |
 
 关节数组按系统配置中的机器人、臂组、关节顺序排列；末端数组按
 `ModelApi::GetEndEffectorNames()` 的顺序排列。
@@ -497,9 +678,6 @@ DDS 实时话题，用户不需要手动添加 `rt/` 前缀。
 | `/Robot/Model/SetFbasePose` | `PoseArray` | `poses: Pose[]` | 周期更新各机型浮动基位姿。 |
 | `/Robot/Motion/ServoJoint` | `ServoJointCommand` | 目标关节、周期、可选速度/加速度 | 实时关节伺服控制。 |
 | `/Robot/Motion/ServoLine` | `ServoLineCommand` | 目标末端位姿数组、周期 | 实时笛卡尔伺服控制。 |
-| `/Robot/Eef/SetActuatorAngle` | `DoubleArray` | `data: double[]`，rad | 周期设置末端驱动器角度。 |
-| `/Robot/Eef/SetActuatorForce` | `DoubleArray` | `data: double[]`，N | 周期设置末端驱动器力。 |
-| `/Robot/Eef/SetActuatorSpeed` | `DoubleArray` | `data: double[]`，rad/s | 周期设置末端驱动器速度。 |
 
 `ServoJointCommand::target_joints` 的长度必须与驱动关节自由度一致；
 `ServoLineCommand::target_poses` 的外层顺序必须与末端配置一致。`period` 单位为秒，
@@ -512,42 +690,30 @@ DDS 实时话题，用户不需要手动添加 `rt/` 前缀。
 | SDK 话题名 | 消息类型 | 数据内容 | 典型用途 |
 |---|---|---|---|
 | `/Chassis/State/JointPositions` | `JointPositions` | `joint_positions: double[]`，rad | 获取转向关节位置等底盘关节位置。 |
+| `/Chassis/State/WheelPositions` | `JointPositions` | `joint_positions: double[]`，rad | 轮毂角度反馈，按轮关节顺序，不做单圈归一化；不支持时为空。 |
 | `/Chassis/State/JointVelocities` | `JointVelocities` | `joint_velocities: double[]`，rad/s | 获取轮关节速度等底盘关节速度。 |
 | `/Chassis/State/BaseVelocity` | `BaseVelocity` | `linear_x/y`、`angular_z` | 底盘里程计速度和运动监控。 |
 | `/Chassis/State/BasePose` | `BasePose` | `x`、`y`、`yaw`、`valid` | 底盘定位位姿；使用前检查 `valid`。 |
+| `/Chassis/State/BatteryCurrents` | `BatteryCurrents` | `battery_currents` 数组，A | 接收最新电流缓存。 |
+| `/Chassis/State/BatteryVoltages` | `BatteryVoltages` | `battery_voltages` 数组，V | 接收最新电压缓存。 |
+| `/Chassis/State/BatterySoc` | `BatterySoc` | `battery_soc` 数组，% | 接收最新相对 SOC缓存。 |
+| `/Chassis/State/BatteryTemperatures` | `BatteryTemperatures` | `battery_temperatures` 数组，℃ | 接收最新温度缓存。 |
+| `/Chassis/State/BatteryPresence` | `BatteryPresence` | `battery_present` 数组，bool | 该舱是否装有电池。 |
+| `/Chassis/State/BatteryChargingStates` | `BatteryChargingStates` | `battery_charging_states` 字符串数组 | `kNotConnected`/`kConnected`/`kCharging`/`kFullyCharged`；无电池时为 `kNotConnected`。 |
+| `/Chassis/State/BatteryErrorBits` | `BatteryErrorBits` | `battery_error_bits` 数组，uint32 | 接收最新错误位图缓存。 |
+| `/Chassis/State/BatteryWarningBits` | `BatteryWarningBits` | `battery_warning_bits` 数组，uint32 | 接收最新警告位图缓存。 |
+| `/Chassis/State/UltrasonicRadar` | `UltrasonicRadarState` | 地址 1 到 8 的最新距离，单位 m | 接收当前八路距离。 |
 | `/Chassis/State/ErrorCode` | `ChassisErrorCode` | `error_code: int32` | 监控底盘系统错误码。 |
 | `/Chassis/State/ServoState` | `ServoStateArray` | `values: uint32[]` | 监控轮关节和转向关节伺服状态。 |
 | `/Chassis/State/JointEmcyCode` | `JointEmcyCodeArray` | `values: uint32[]` | 获取底盘关节 EMCY 故障事件。 |
 | `/Chassis/Manager/SafetyState` | `SafetyState` | `state: int32` | 监控底盘安全状态机。 |
 | `/Chassis/Manager/ChassisState` | `ChassisSystemState` | `state: int32` | 监控底盘初始化、上下电和运行状态。 |
 
-### 6.5 订阅示例
+电池各分项话题与对应查询接口读取同一缓存，固定以 1000 ms 周期发布，
+Best Effort、历史深度 1；无电池配置时不注册或发布电池话题。
+单块电池超过 8 秒未收到有效 CAN 报文时，该块各分项话题发布零值。
 
-```cpp
-#include "modi_sdk/robot_client.hpp"
-#include "modi_type_def.h"
-
-modi_sdk::RobotClient client;
-
-const int result = client.RegisterSubscriber(
-    {"/Robot/State/JointPositions", "/Robot/Motion/PlannerStatus"},
-    [](const modi_sdk::Parser& parser) {
-      const auto joints = parser.Value<JointPositions>(
-          "/Robot/State/JointPositions");
-      const auto planner = parser.Value<PlannerStatus>(
-          "/Robot/Motion/PlannerStatus");
-
-      // 回调运行在实时线程，只复制必要数据，不执行阻塞操作。
-      (void)joints;
-      (void)planner;
-    });
-
-if (result != 0 || !client.Start()) {
-  return 1;
-}
-```
-
-### 6.6 使用注意事项
+### 6.5 使用注意事项
 
 - 话题注册必须在 `RobotClient::Start()` 前完成。
 - SDK 话题名必须以单个 `/` 开头，并严格匹配表格中的大小写。
@@ -555,3 +721,5 @@ if (result != 0 || !client.Start()) {
 - 回调运行在 SDK 实时线程，应避免终端/文件 I/O、服务调用、长时间持锁和不可控分配。
 - 回调与主线程共享数据时，应使用互斥量、无锁队列或其他线程安全机制。
 - `GetJointEmcyCode()` 对应的 EMCY 是事件数据；读取后会被消费，不应当作持续状态使用。
+- 电池数组按服务端 `battery.id` 排列；单块电池超过 8 秒未收到有效 CAN 报文时，
+  该块各分项返回零值，表示电池仓断联或未插入。

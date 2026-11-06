@@ -51,7 +51,7 @@ C++ 接口。SDK 支持机械臂、双臂和移动底盘，可用于模型查询
 | 力控制 | 支持笛卡尔/关节导纳与阻抗控制、目标力和参数配置 |
 | 算法接口 | 提供正逆运动学、逆动力学、任务权重和负载标定 |
 | 设备管理 | 提供上下电、抱闸、故障清除、急停和状态机查询 |
-| 末端与 IO | 支持数字 IO、夹爪和灵巧手等硬件末端执行器 |
+| 末端与 IO | 支持数字 IO 和工具板 EG2 夹爪 |
 | 移动底盘 | 支持底盘模型、状态、速度、位姿运动和安全管理 |
 | 实时话题 | 提供固定周期的实时订阅与发布回调 |
 
@@ -138,6 +138,7 @@ cmake --build build/example --parallel "$(nproc)"
 |---|---|
 | [`example/single_arm_example`](example/single_arm_example) | 单臂模型、状态、运动、算法、实时话题和末端执行器示例 |
 | [`example/dual_arm_example`](example/dual_arm_example) | 双臂模型、状态、运动、算法和实时话题示例 |
+| [`example/single_arm_example/example_free_drive.cpp`](example/single_arm_example/example_free_drive.cpp) | 按臂启用拖动示教、读取 HAL 重力及工作模式、退出时禁用拖动 |
 | [`example/chassis_example`](example/chassis_example) | 底盘上电、速度控制、状态读取、停止和下电示例 |
 
 运动控制示例会驱动真实设备。首次运行前应阅读源码，降低目标位置、速度和加速度，

@@ -55,11 +55,10 @@
 | Robot Hardware | End Effector / EndEffectorError | -404001 ~ -404999 | robot_hal.hpp |
 | Chassis Hardware | HAL / ChassisHalError | -411001 ~ -411999 | chassis_hal.hpp |
 | Chassis Hardware | CanEvo / ChassisCanEvoError | -412001 ~ -412999 | chassis_hal.hpp |
-| Chassis Hardware | EtherCAT / ChassisEcError | -413001 ~ -413999 | chassis_hal.hpp |
-| Chassis Hardware | EtherCAT Bridge / ChassisEcBridgeError | -414001 ~ -414999 | chassis_hal.hpp |
 | Chassis Hardware | Lidar / ChassisLidarError | -415001 ~ -415999 | chassis_hal.hpp |
 | Chassis Hardware | Simulation / ChassisSimError | -416001 ~ -416999 | chassis_hal.hpp |
 | Chassis Hardware | HAL Factory / ChassisHalFactoryError | -417001 ~ -417999 | chassis_hal.hpp |
+| Chassis Hardware | Ultrasonic Radar / ChassisUltrasonicRadarError | -418001 ~ -418999 | chassis_hal.hpp |
 | Modi Client | Robot Scope / ScopeError | -501001 ~ -501999 | scope.hpp |
 | Modi Client | Robot Frontend / FrontendError | -502001 ~ -502999 | scope.hpp |
 | Modi Client | Chassis Scope / ChassisScopeError | -511001 ~ -511999 | scope.hpp |
@@ -81,6 +80,19 @@
 | -104001 | SYSTEM_INVALID_STATE | SystemError::kInvalidState | 状态无效 | 机器人 System 当前运行状态不允许执行请求的命令。 | 检查当前运行状态，等待现有任务结束或切换到允许状态后重试。 |
 | -104002 | SYSTEM_RUNTIME_INITIALIZATION_FAILED | SystemError::kRuntimeInitializationFailed | 运行时初始化失败 | 机器人 System 运行时或依赖组件初始化失败。 | 检查初始化顺序、配置和依赖组件状态，结合启动日志修复后重试。 |
 | -104003 | SYSTEM_RUNTIME_COMMAND_TIMEOUT | SystemError::kRuntimeCommandTimeout | 运行时命令超时 | 机器人 System 等待运行时命令完成超过规定时间。 | 检查服务状态、通信链路、周期和超时配置，恢复连接后重试。 |
+| -104004 | SYSTEM_FREE_DRIVE_CONFLICT | SystemError::kFreeDriveConflict | 拖动示教模式冲突 | 目标机械臂当前控制模式与请求冲突。 | 先关闭目标臂拖动示教或调整命令目标后重试。 |
+| -104005 | SYSTEM_FREE_DRIVE_GRAVITY_UNAVAILABLE | SystemError::kFreeDriveGravityUnavailable | 拖动示教重力不可用 | 目标机械臂无法提供有效重力向量。 | 检查 base_id、MPU PDO、安装方向和通信状态。 |
+| -104006 | SYSTEM_FREE_DRIVE_TORQUE_LIMIT | SystemError::kFreeDriveTorqueLimit | 拖动示教电流越限 | WBC 关节力矩经 Kt 换算后的电流超过 URDF effort（A）上限。 | 检查模型参数、重力方向、关节 Kt 和 URDF effort 电流上限配置。 |
+| -104007 | SYSTEM_FREE_DRIVE_MODE_SWITCH_FAILED | SystemError::kFreeDriveModeSwitchFailed | 拖动示教模式切换失败 | 机械臂无法在 CSP 与 CST 之间安全切换。 | 检查驱动模式反馈、总线通信和关节状态。 |
+| -104008 | SYSTEM_CALIBRATION_BUSY | SystemError::kCalibrationBusy | 标定操作忙 | 辨识、停止或参数操作发生资源冲突。 | 等待当前操作完成或先请求取消。 |
+| -104009 | SYSTEM_CALIBRATION_RESULT_UNAVAILABLE | SystemError::kCalibrationResultUnavailable | 辨识结果不可用 | 目标臂没有有效的摩擦辨识结果。 | 先完成一次摩擦参数辨识。 |
+| -104010 | SYSTEM_CALIBRATION_POSITIONING_TIMEOUT | SystemError::kCalibrationPositioningTimeout | 辨识定位超时 | 辨识初始定位后关节未在规定时间内稳定。 | 检查跟随误差、关节状态和定位条件。 |
+| -104011 | SYSTEM_CALIBRATION_FEEDBACK_INVALID | SystemError::kCalibrationFeedbackInvalid | 辨识反馈无效 | 关节反馈缺失、过期、重复、维度异常或包含非有限值。 | 检查 PDO 接收、总线和反馈周期。 |
+| -104012 | SYSTEM_CALIBRATION_SAMPLING_INTERRUPTED | SystemError::kCalibrationSamplingInterrupted | 辨识采样中断 | 采样缺少控制周期，轨迹与反馈无法保持完整对应。 | 检查实时周期和系统负载后重新辨识。 |
+| -104013 | SYSTEM_CALIBRATION_STORAGE_FAILED | SystemError::kCalibrationStorageFailed | 标定数据保存失败 | 标定数据目录不可用或数据保存失败。 | 检查目录权限、磁盘空间和服务端日志。 |
+| -104014 | SYSTEM_CALIBRATION_PARAM_VERIFY_FAILED | SystemError::kCalibrationParamVerifyFailed | 摩擦参数核对失败 | 回读参数与协议量化后的写入目标不一致。 | 重新读取关节参数并检查通信和关节固件。 |
+| -104015 | SYSTEM_COLLISION_DETECTED | SystemError::kCollisionDetected | 碰撞停机 | 碰撞检测触发，碰撞臂保持上电并锁存停止。 | 确认安全后调用 ClearCollision 清除碰撞。 |
+| -104016 | SYSTEM_COLLISION_FEEDBACK_INVALID | SystemError::kCollisionFeedbackInvalid | 碰撞反馈无效 | 碰撞检测或恢复所需的关节反馈缺失或无效。 | 检查关节反馈及运动状态，确认安全后重试。 |
 
 ### 4.2 ChassisSystemError (-111001 ~ -114999)
 
@@ -111,6 +123,21 @@
 | -114009 | CHASSIS_SYSTEM_INVALID_COMMAND | ChassisSystemError::kInvalidCommand | 命令无效 | 底盘 System 收到的运行时控制命令参数无效。 | 检查输入参数、数据格式、数量和取值范围，修正后重试。 |
 | -114010 | CHASSIS_SYSTEM_HAL_COMMAND_FAILED | ChassisSystemError::kHalCommandFailed | HAL 命令失败 | 底盘 System 向 HAL 下发控制命令失败。 | 检查设备状态、供电、通信和 HAL 日志，排除硬件故障后重试。 |
 | -114011 | CHASSIS_SYSTEM_SAVE_IN_PROGRESS | ChassisSystemError::kSaveInProgress | 地图保存中 | 底盘 System 正在保存另一份 SLAM 地图。 | 等待当前地图保存完成后再重试。 |
+| -114012 | CHASSIS_SYSTEM_MAP_NAME_INVALID | ChassisSystemError::kMapNameInvalid | 地图名称无效 | 地图名称为空、包含非法字符或不符合长度限制。 | 使用 1 至 64 个中文、英文字母、数字、空格、下划线或短横线重新命名。 |
+| -114013 | CHASSIS_SYSTEM_MAP_NAME_CONFLICT | ChassisSystemError::kMapNameConflict | 地图名称冲突 | 目标地图名称已经存在，底盘 System 不会覆盖已有地图。 | 更换地图名称后重新保存。 |
+| -114014 | CHASSIS_SYSTEM_MAP_NOT_FOUND | ChassisSystemError::kMapNotFound | 地图不存在 | 指定地图不在当前工作区的正式地图目录中。 | 刷新地图列表并选择已存在的地图。 |
+| -114015 | CHASSIS_SYSTEM_MAP_ASSETS_INVALID | ChassisSystemError::kMapAssetsInvalid | 地图资产无效 | 地图缺少二维、三维或 Scan Context 定位资产，或文件不可读取。 | 检查地图目录中的 YAML、PGM、PCD 和 Scan Context 文件。 |
+| -114016 | CHASSIS_SYSTEM_MAP_NOT_LOADED | ChassisSystemError::kMapNotLoaded | 地图未加载 | 进入定位模式前尚未加载有效地图。 | 先调用 LoadMap，再切换到 localization 模式。 |
+| -114017 | CHASSIS_SYSTEM_MAPPING_ALREADY_RUNNING | ChassisSystemError::kMappingAlreadyRunning | 建图已在运行 | 底盘 System 已处于建图模式。 | 继续当前建图，或先保存或放弃当前结果。 |
+| -114018 | CHASSIS_SYSTEM_MAPPING_SAVE_REQUIRED | ChassisSystemError::kMappingSaveRequired | 建图结果待处理 | 当前建图结果尚未保存或放弃，不能切换模式或加载其他地图。 | 调用 SaveMapping 保存，或调用 DiscardMapping 放弃。 |
+| -114019 | CHASSIS_SYSTEM_MAPPING_NOT_RUNNING | ChassisSystemError::kMappingNotRunning | 未在建图 | 当前没有正在运行或等待处理的建图结果。 | 先进入 mapping 模式开始建图。 |
+| -114020 | CHASSIS_SYSTEM_MAPPING_DATA_UNAVAILABLE | ChassisSystemError::kMappingDataUnavailable | 无可保存建图数据 | SLAM 尚未产生可归档的地图数据。 | 继续采集有效点云后再保存。 |
+| -114021 | CHASSIS_SYSTEM_MAP_ARCHIVE_FAILED | ChassisSystemError::kMapArchiveFailed | 地图归档失败 | 地图复制、同步或原子提交到正式目录时失败。 | 检查磁盘空间、目录权限和 system 日志后重试。 |
+| -114022 | CHASSIS_SYSTEM_LOCALIZATION_START_FAILED | ChassisSystemError::kLocalizationStartFailed | 定位启动失败 | 地图已加载或保存，但 SLAM 定位运行时启动失败。 | 检查地图资产、雷达状态和 SLAM 日志后重试。 |
+| -114023 | CHASSIS_SYSTEM_MAPPING_DISCARD_FAILED | ChassisSystemError::kMappingDiscardFailed | 放弃建图失败 | 底盘 System 无法停止建图或清理临时地图。 | 检查临时目录权限和 SLAM 状态后重试。 |
+| -114024 | CHASSIS_SYSTEM_MAPPING_START_FAILED | ChassisSystemError::kMappingStartFailed | 建图启动失败 | 底盘 System 无法创建临时目录或启动 SLAM 建图运行时。 | 检查临时目录权限、雷达状态和 SLAM 日志后重试。 |
+| -114025 | CHASSIS_SYSTEM_MAP_IN_USE | ChassisSystemError::kMapInUse | 地图正在使用 | 指定地图是底盘 System 当前已加载地图，不能删除。 | 先切换到其他地图，或重启 system 清除当前加载状态后再删除。 |
+| -114026 | CHASSIS_SYSTEM_MAP_REMOVE_FAILED | ChassisSystemError::kMapRemoveFailed | 地图删除失败 | 底盘 System 删除地图目录时发生文件系统错误。 | 检查地图目录权限、磁盘状态和 system 日志后重试。 |
 
 ## 5. SDK
 
@@ -440,6 +467,11 @@
 | -404006 | END_EFFECTOR_COMMUNICATION_FAILED | EndEffectorError::kCommunicationFailed | COMMUNICATION失败 | 机器人 HAL 与末端执行器通信失败。 | 检查服务状态、通信链路、周期和超时配置，恢复连接后重试。 |
 | -404007 | END_EFFECTOR_ALREADY_INITIALIZED | EndEffectorError::kAlreadyInitialized | 重复初始化 | 机器人末端执行器已初始化，重复请求初始化。 | 检查初始化顺序、配置和依赖组件状态，结合启动日志修复后重试。 |
 | -404008 | END_EFFECTOR_INITIALIZATION_FAILED | EndEffectorError::kInitializationFailed | 初始化失败 | 机器人末端执行器建立连接或配置设备时失败。 | 检查初始化顺序、配置和依赖组件状态，结合启动日志修复后重试。 |
+| -404009 | END_EFFECTOR_GRIPPER_MOTOR_STALL | EndEffectorError::kGripperMotorStall | 夹爪堵转故障 | EG2 夹爪故障位图 bit0（0x01）置位，设备上报堵转故障。 | 停止夹爪动作，检查机械卡滞、夹持物和负载；排除原因后发送 0x17 清除故障，若再次出现则检修设备。 |
+| -404010 | END_EFFECTOR_GRIPPER_OVER_TEMPERATURE | EndEffectorError::kGripperOverTemperature | 夹爪过温故障 | EG2 夹爪故障位图 bit1（0x02）置位，驱动器温度高于 80℃，进入过温保护。 | 停止夹爪动作并检查散热、负载；等待温度低于 60℃后自动恢复，此故障不能通过 0x17 指令清除。 |
+| -404011 | END_EFFECTOR_GRIPPER_OVER_CURRENT | EndEffectorError::kGripperOverCurrent | 夹爪过流故障 | EG2 夹爪故障位图 bit2（0x04）置位，设备上报过流故障。 | 停止夹爪动作，检查负载和机械卡滞；排除原因后发送 0x17 清除故障，若再次出现则检修设备。 |
+| -404012 | END_EFFECTOR_GRIPPER_DRIVER_FAULT | EndEffectorError::kGripperDriverFault | 夹爪驱动器运行故障 | EG2 夹爪故障位图 bit3（0x08）置位，设备上报驱动器运行故障。 | 停止夹爪动作并检查驱动器状态；排除原因后发送 0x17 清除故障，若再次出现则检修设备。 |
+| -404013 | END_EFFECTOR_GRIPPER_INTERNAL_COMMUNICATION | EndEffectorError::kGripperInternalCommunication | 夹爪内部通信故障 | EG2 夹爪故障位图 bit4（0x10）置位，设备上报内部通信故障，不等同于主机 CAN 通信超时。 | 停止夹爪动作并检查设备内部通信状态；排除原因后发送 0x17 清除故障，若再次出现则检修设备。 |
 
 ## 10. Chassis Hardware
 
@@ -479,32 +511,7 @@
 | -412009 | CHASSIS_HAL_CAN_EVO_REALTIME_CONFIG_FAILED | ChassisCanEvoError::kRealtimeConfigFailed | 实时周期CONFIG失败 | 底盘 CanEvo 配置实时通信参数失败。 | 检查设备状态、供电、通信和 HAL 日志，排除硬件故障后重试。 |
 | -412010 | CHASSIS_HAL_CAN_EVO_PDO_TIMEOUT | ChassisCanEvoError::kPdoTimeout | PDO超时 | 底盘 CanEvo 等待设备 PDO 数据超时。 | 检查服务状态、通信链路、周期和超时配置，恢复连接后重试。 |
 
-### 10.3 ChassisEcError (-413001 ~ -413999)
-
-| 错误码 | 名称 | 枚举项 | 标题 | 含义/触发条件 | 排查/恢复建议 |
-| ---: | --- | --- | --- | --- | --- |
-| 0 | OK | ChassisEcError::kOk | 操作成功 | 操作已成功完成。 | 无需处理。 |
-| -413001 | CHASSIS_HAL_EC_INVALID_ARGUMENT | ChassisEcError::kInvalidArgument | 参数无效 | 底盘 EtherCAT 接口收到无效的从站或通信配置参数。 | 检查输入参数、数据格式、数量和取值范围，修正后重试。 |
-| -413002 | CHASSIS_HAL_EC_NOT_INITIALIZED | ChassisEcError::kNotInitialized | 未初始化 | 底盘 EtherCAT 主站尚未初始化就请求设备通信。 | 检查初始化顺序、配置和依赖组件状态，结合启动日志修复后重试。 |
-| -413003 | CHASSIS_HAL_EC_MASTER_OPEN_FAILED | ChassisEcError::kMasterOpenFailed | MASTEROPEN失败 | 底盘 EtherCAT 主站打开网络接口或建立连接失败。 | 检查设备状态、供电、通信和 HAL 日志，排除硬件故障后重试。 |
-| -413004 | CHASSIS_HAL_EC_SLAVE_UNAVAILABLE | ChassisEcError::kSlaveUnavailable | SLAVE不可用 | 底盘 EtherCAT 找不到或无法访问配置的从站。 | 检查相关模块、服务及依赖组件是否已启动并处于可用状态。 |
-| -413005 | CHASSIS_HAL_EC_PDO_CONFIGURATION_FAILED | ChassisEcError::kPdoConfigurationFailed | PDO配置失败 | 底盘 EtherCAT 为从站配置 PDO 映射失败。 | 检查设备状态、供电、通信和 HAL 日志，排除硬件故障后重试。 |
-| -413006 | CHASSIS_HAL_EC_COMMUNICATION_TIMEOUT | ChassisEcError::kCommunicationTimeout | COMMUNICATION超时 | 底盘 EtherCAT 与从站周期通信等待超时。 | 检查服务状态、通信链路、周期和超时配置，恢复连接后重试。 |
-
-### 10.4 ChassisEcBridgeError (-414001 ~ -414999)
-
-| 错误码 | 名称 | 枚举项 | 标题 | 含义/触发条件 | 排查/恢复建议 |
-| ---: | --- | --- | --- | --- | --- |
-| 0 | OK | ChassisEcBridgeError::kOk | 操作成功 | 操作已成功完成。 | 无需处理。 |
-| -414001 | CHASSIS_HAL_EC_BRIDGE_INVALID_ARGUMENT | ChassisEcBridgeError::kInvalidArgument | 参数无效 | 底盘 EtherCAT 桥接层收到无效的设备地址或命令参数。 | 检查输入参数、数据格式、数量和取值范围，修正后重试。 |
-| -414002 | CHASSIS_HAL_EC_BRIDGE_NOT_INITIALIZED | ChassisEcBridgeError::kNotInitialized | 未初始化 | 底盘 EtherCAT 桥接层尚未初始化就处理读写请求。 | 检查初始化顺序、配置和依赖组件状态，结合启动日志修复后重试。 |
-| -414003 | CHASSIS_HAL_EC_BRIDGE_SERVICE_UNAVAILABLE | ChassisEcBridgeError::kServiceUnavailable | 服务不可用 | 底盘 EtherCAT 桥接层所依赖的通信服务不可用。 | 检查相关模块、服务及依赖组件是否已启动并处于可用状态。 |
-| -414004 | CHASSIS_HAL_EC_BRIDGE_INVALID_RESPONSE | ChassisEcBridgeError::kInvalidResponse | 响应无效 | 底盘 EtherCAT 桥接层收到缺失字段或格式无效的响应。 | 检查输入参数、数据格式、数量和取值范围，修正后重试。 |
-| -414005 | CHASSIS_HAL_EC_BRIDGE_READ_FAILED | ChassisEcBridgeError::kReadFailed | 读取失败 | 底盘 EtherCAT 桥接层读取从站反馈失败。 | 检查文件或数据格式、目标路径、访问权限和存储空间，并查看相关日志。 |
-| -414006 | CHASSIS_HAL_EC_BRIDGE_WRITE_FAILED | ChassisEcBridgeError::kWriteFailed | 写入失败 | 底盘 EtherCAT 桥接层向从站写入命令失败。 | 检查文件或数据格式、目标路径、访问权限和存储空间，并查看相关日志。 |
-| -414007 | CHASSIS_HAL_EC_BRIDGE_TIMEOUT | ChassisEcBridgeError::kTimeout | 超时 | 底盘 EtherCAT 桥接层等待通信操作完成超时。 | 检查服务状态、通信链路、周期和超时配置，恢复连接后重试。 |
-
-### 10.5 ChassisLidarError (-415001 ~ -415999)
+### 10.3 ChassisLidarError (-415001 ~ -415999)
 
 | 错误码 | 名称 | 枚举项 | 标题 | 含义/触发条件 | 排查/恢复建议 |
 | ---: | --- | --- | --- | --- | --- |
@@ -517,7 +524,7 @@
 | -415006 | CHASSIS_HAL_LIDAR_READ_TIMEOUT | ChassisLidarError::kReadTimeout | READ超时 | 底盘雷达 HAL 等待激光帧超过规定时间。 | 检查服务状态、通信链路、周期和超时配置，恢复连接后重试。 |
 | -415007 | CHASSIS_HAL_LIDAR_INVALID_FRAME | ChassisLidarError::kInvalidFrame | FRAME无效 | 底盘雷达 HAL 收到缺失字段或内容无效的激光数据帧。 | 检查设备状态、供电、通信和 HAL 日志，排除硬件故障后重试。 |
 
-### 10.6 ChassisSimError (-416001 ~ -416999)
+### 10.4 ChassisSimError (-416001 ~ -416999)
 
 | 错误码 | 名称 | 枚举项 | 标题 | 含义/触发条件 | 排查/恢复建议 |
 | ---: | --- | --- | --- | --- | --- |
@@ -527,7 +534,7 @@
 | -416003 | CHASSIS_HAL_SIM_COMMAND_LENGTH_MISMATCH | ChassisSimError::kCommandLengthMismatch | 命令LENGTH不匹配 | 发送给底盘仿真 HAL 的关节命令数量与配置不一致。 | 检查输入参数、数据格式、数量和取值范围，修正后重试。 |
 | -416004 | CHASSIS_HAL_SIM_UNSUPPORTED_OPERATION | ChassisSimError::kUnsupportedOperation | 操作不支持 | 底盘仿真 HAL 不支持请求的硬件操作。 | 检查设备状态、供电、通信和 HAL 日志，排除硬件故障后重试。 |
 
-### 10.7 ChassisHalFactoryError (-417001 ~ -417999)
+### 10.5 ChassisHalFactoryError (-417001 ~ -417999)
 
 | 错误码 | 名称 | 枚举项 | 标题 | 含义/触发条件 | 排查/恢复建议 |
 | ---: | --- | --- | --- | --- | --- |
@@ -535,6 +542,22 @@
 | -417001 | CHASSIS_HAL_FACTORY_INVALID_CONFIGURATION | ChassisHalFactoryError::kInvalidConfiguration | 配置无效 | 底盘 HAL 工厂缺少必要的后端类型或创建参数。 | 检查输入参数、数据格式、数量和取值范围，修正后重试。 |
 | -417002 | CHASSIS_HAL_FACTORY_UNKNOWN_BACKEND | ChassisHalFactoryError::kUnknownBackend | UNKNOWN后端 | 底盘 HAL 工厂找不到配置的设备后端类型。 | 检查相关模块、服务及依赖组件是否已启动并处于可用状态。 |
 | -417003 | CHASSIS_HAL_FACTORY_INSTANCE_CREATION_FAILED | ChassisHalFactoryError::kInstanceCreationFailed | INSTANCECREATION失败 | 底盘 HAL 工厂实例化所选硬件后端失败。 | 检查设备状态、供电、通信和 HAL 日志，排除硬件故障后重试。 |
+
+### 10.6 ChassisUltrasonicRadarError (-418001 ~ -418999)
+
+| 错误码 | 名称 | 枚举项 | 标题 | 含义/触发条件 | 排查/恢复建议 |
+| ---: | --- | --- | --- | --- | --- |
+| 0 | OK | ChassisUltrasonicRadarError::kOk | 操作成功 | 操作已成功完成。 | 无需处理。 |
+| -418001 | CHASSIS_HAL_ULTRASONIC_RADAR_INVALID_ARGUMENT | ChassisUltrasonicRadarError::kInvalidArgument | 参数无效 | 超声波雷达 HAL 收到无效的串口、地址或量程参数。 | 检查超声波雷达设备路径、地址列表和量程配置，修正后重试。 |
+| -418002 | CHASSIS_HAL_ULTRASONIC_RADAR_NOT_INITIALIZED | ChassisUltrasonicRadarError::kNotInitialized | 未初始化 | 超声波雷达 HAL 尚未初始化就请求启动或读取数据。 | 检查底盘硬件初始化顺序和超声波雷达配置后重试。 |
+| -418003 | CHASSIS_HAL_ULTRASONIC_RADAR_CONFIGURATION_FAILED | ChassisUltrasonicRadarError::kConfigurationFailed | 配置失败 | 超声波雷达通道缺失或设备测量参数配置失败。 | 检查八路地址及 DYP-A21 量程、波束角配置，结合 HAL 日志修复后重试。 |
+| -418004 | CHASSIS_HAL_ULTRASONIC_RADAR_START_FAILED | ChassisUltrasonicRadarError::kStartFailed | 启动失败 | 超声波雷达 HAL 无法启动采集任务。 | 检查系统资源和 HAL 日志，修复启动失败原因后重试。 |
+| -418005 | CHASSIS_HAL_ULTRASONIC_RADAR_DISCONNECTED | ChassisUltrasonicRadarError::kDisconnected | 设备断开 | 超声波雷达串口不存在、已关闭或通信链路断开。 | 检查传感器供电、RS485 接线、串口设备节点和访问权限。 |
+| -418006 | CHASSIS_HAL_ULTRASONIC_RADAR_READ_TIMEOUT | ChassisUltrasonicRadarError::kReadTimeout | 读取超时 | 超声波雷达在规定时间内未返回完整响应。 | 检查传感器供电、RS485 总线质量、地址配置和波特率。 |
+| -418007 | CHASSIS_HAL_ULTRASONIC_RADAR_CRC_ERROR | ChassisUltrasonicRadarError::kCrcError | CRC 错误 | 超声波雷达返回的 Modbus 响应未通过 CRC 校验。 | 检查 RS485 接线、终端电阻、屏蔽接地和总线干扰。 |
+| -418008 | CHASSIS_HAL_ULTRASONIC_RADAR_PROTOCOL_ERROR | ChassisUltrasonicRadarError::kProtocolError | 协议错误 | 超声波雷达返回了无效或异常的 Modbus 响应。 | 检查设备型号、从站地址、寄存器协议和串口参数。 |
+| -418009 | CHASSIS_HAL_ULTRASONIC_RADAR_IO_ERROR | ChassisUltrasonicRadarError::kIoError | I/O 错误 | 超声波雷达串口读写发生 I/O 错误。 | 检查设备节点、访问权限、串口占用和物理连接。 |
+| -418010 | CHASSIS_HAL_ULTRASONIC_RADAR_DATA_UNAVAILABLE | ChassisUltrasonicRadarError::kDataUnavailable | 数据不可用 | 当前超声波通道尚未完成有效测量、受到干扰或暂时无法读取一致的缓存快照。 | 等待下一次该通道更新；若持续出现，检查传感器状态和 HAL 日志。 |
 
 ## 11. Modi Client
 
@@ -616,7 +639,7 @@
 | 0x7304 / 29444 | ROBOT_JOINT_ENCODER_2 | FaultCode::kEncoder2 | 编码器 2 异常 | 关节第二编码器反馈异常。 | 检查第二编码器链路、接插件和编码器参数。 |
 | 0x7385 / 29573 | ROBOT_JOINT_ENCODER_1_BATTERY | FaultCode::kEncoder1Battery | 编码器 1 电池电压低 | 关节主多圈编码器电池电压低。 | 更换或检查多圈编码器电池。 |
 | 0x7386 / 29574 | ROBOT_JOINT_ENCODER_2_BATTERY | FaultCode::kEncoder2Battery | 编码器 2 电池电压低 | 关节第二多圈编码器电池电压低。 | 更换或检查第二多圈编码器电池。 |
-| 0x8100 / 33024 | ROBOT_JOINT_COMMUNICATION | FaultCode::kCommunication | 通信异常 | 关节驱动器检测到现场总线通信异常。 | 检查 CAN/DDS/EtherCAT 通信链路、周期和连接状态。 |
+| 0x8100 / 33024 | ROBOT_JOINT_COMMUNICATION | FaultCode::kCommunication | 通信异常 | 关节驱动器检测到现场总线通信异常。 | 检查 CAN/DDS 通信链路、周期和连接状态。 |
 | 0x8400 / 33792 | ROBOT_JOINT_OVER_SPEED | FaultCode::kOverSpeed | 超过最大速度 | 关节速度超过设备允许的最大值。 | 降低速度指令，检查速度限幅和控制模式。 |
 | 0x8611 / 34321 | ROBOT_JOINT_FOLLOWING_ERROR | FaultCode::kFollowingError | 位置跟随误差过大 | 关节实际位置与目标位置的偏差超过保护阈值。 | 降低速度/加速度，检查负载、增益和目标轨迹连续性。 |
 | 0xFF00 / 65280 | ROBOT_JOINT_CURRENT_SENSOR | FaultCode::kCurrentSensor | 电流传感器故障 | 关节驱动器电流采样异常。 | 检查驱动器电流采样硬件，必要时重启或更换驱动器。 |

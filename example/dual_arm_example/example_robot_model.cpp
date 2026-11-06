@@ -50,6 +50,19 @@ int main(int argc, char* argv[]) {
     PrintVec("  upper", upper);
   }
 
+  std::vector<double> limits;
+  if (model->GetActuatorJointVelocityLimits(limits) == 0)
+    PrintVec("Joint velocity limits (rad/s)", limits);
+  if (model->GetActuatorJointCurrentLimits(limits) == 0)
+    PrintVec("Joint current limits (A)", limits);
+  if (model->GetActuatorJointAccelerationLimits(limits) == 0)
+    PrintVec("Joint acceleration limits (rad/s^2)", limits);
+  std::vector<double> translation, rotation;
+  if (model->GetEndEffectorVelocityLimits(translation, rotation) == 0) {
+    PrintVec("End-effector translation limits (m/s)", translation);
+    PrintVec("End-effector rotation limits (rad/s)", rotation);
+  }
+
   // End effector names
   auto ee_names = model->GetEndEffectorNames();
   std::cout << "EndEffectorNames [" << ee_names.size() << "]:";

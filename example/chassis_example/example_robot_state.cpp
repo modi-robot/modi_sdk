@@ -4,10 +4,13 @@
  * 调用流程：创建并启动 modi_sdk::RobotClient，通过 client.Chassis()
  * 获取底盘接口，再通过 chassis->State() 获取状态接口，循环调用
  * GetBaseVelocity()、GetBasePose()、GetNavigationStatus()、
- * GetSteeringPositions()、GetWheelSpeeds()、GetServoState() 和故障码
+ * GetSteeringPositions()、GetWheelPositions()、GetWheelSpeeds()、
+ * 电流/电压/温度、电池、GetServoState() 和故障码
  * 查询 API 读取状态。
  *
  * 如果传入 x y yaw，示例会先调用 ResetBasePose() 重置底盘位姿。
+ * 用法：chassis_example_robot_state <chassis_id> [x y yaw]。
+ * 通过首个命令行参数指定 chassis_id，DDS Domain ID 使用默认值 0。
  * 按 Ctrl-C 结束状态读取，最后调用 client.Stop()。
  */
 
@@ -30,8 +33,8 @@ void Stop(int) { g_running.store(false); }
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 1 && argc != 4) {
-    std::cerr << "usage: chassis_example_robot_state [x y yaw]\n";
+  if ((argc != 2 && argc != 5) || argv[1][0] == '\0') {
+    std::cerr << "usage: chassis_example_robot_state <chassis_id> [x y yaw]\n";
     return 2;
   }
 
@@ -40,7 +43,9 @@ int main(int argc, char** argv) {
   std::signal(SIGTERM, Stop);
 
   // 1. 创建并启动 SDK 客户端。
-  modi_sdk::RobotClient client;
+  modi_sdk::RobotClient::Config config;
+  config.target_robot_id = argv[1];
+  modi_sdk::RobotClient client(config);
   if (!client.Start()) {
     std::cerr << "RobotClient::Start() 失败\n";
     return 1;
@@ -50,10 +55,10 @@ int main(int argc, char** argv) {
   auto chassis = client.Chassis();
   auto state = chassis->State();
 
-  if (argc == 4) {
+  if (argc == 5) {
     // 3. 如果提供目标位姿，调用 ResetBasePose() 重置底盘基座位姿。
     const modi_sdk::ChassisBasePose pose{
-        std::stod(argv[1]), std::stod(argv[2]), std::stod(argv[3]), true};
+        std::stod(argv[2]), std::stod(argv[3]), std::stod(argv[4]), true};
     state->ResetBasePose(pose);
     std::cout << "ResetBasePose() pose=(" << pose.x << ", " << pose.y << ", "
               << pose.yaw << ")\n";
@@ -73,15 +78,58 @@ int main(int argc, char** argv) {
     std::cout << "navigation_status: "
               << static_cast<int>(navigation_status) << '\n';
 
-    // 读取转向关节位置和轮速。
+    // 读取转向关节位置、轮毂角度原值（rad）和轮速。
     std::cout << "steering_positions:";
     for (const double value : state->GetSteeringPositions()) {
       std::cout << ' ' << value;
     }
     std::cout << '\n';
 
+    std::cout << "wheel_positions (rad):";
+    for (const double value : state->GetWheelPositions()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+
     std::cout << "wheel_speeds:";
     for (const double value : state->GetWheelSpeeds()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+
+    std::cout << "joint_currents:";
+    for (const double value : state->GetJointsCurrents()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+    std::cout << "joint_voltages:";
+    for (const double value : state->GetJointsVoltages()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+    std::cout << "joint_temperatures:";
+    for (const double value : state->GetJointsTemperatures()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+
+    std::cout << "battery_currents:";
+    for (const double value : state->GetBatteryCurrents()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+    std::cout << "battery_voltages:";
+    for (const double value : state->GetBatteryVoltages()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+    std::cout << "battery_soc:";
+    for (const double value : state->GetBatterySoc()) {
+      std::cout << ' ' << value;
+    }
+    std::cout << '\n';
+    std::cout << "battery_temperatures:";
+    for (const double value : state->GetBatteryTemperatures()) {
       std::cout << ' ' << value;
     }
     std::cout << '\n';

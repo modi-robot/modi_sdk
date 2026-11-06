@@ -93,11 +93,39 @@ cmake --build build -j"$(nproc)"
 - `single_arm_example_algorithm`：运动学与动力学算法。
 - `single_arm_example_rt_topic`：实时话题订阅。
 - `single_arm_example_topic_publish`：实时话题发布。
-- `single_arm_example_eef`：末端执行器控制。
 - `dual_arm_example_*`：双臂对应示例。
+- `single_arm_example_free_drive`：按臂启用拖动示教、查询工作模式，并在退出时禁用。
 - `chassis_example_speed_translate`：底盘上电、平移、停止和下电。
 
 运动类示例会驱动真实设备。首次运行前应阅读源码并减小目标位置、速度和加速度。
+
+### 拖动示教示例
+
+源码位于 `example/single_arm_example/example_free_drive.cpp`，同时支持单臂和双臂。
+先将后端准备到 `Safety=Normal`、`Robot=Running`；示例不会自动上电、释放
+抱闸或下电。默认 DDS Domain ID 为 `0`，非零 Domain 需修改源码中的
+`config.domain_id` 后重新编译。
+
+```bash
+# <robot_id> 替换为后端 system.robot_id；arm_name 必须来自 GetArmNames()。
+./lib/modi_sdk/single_arm_example_free_drive <robot_id> modi_dm3_l
+./lib/modi_sdk/single_arm_example_free_drive <robot_id> modi_dm3_r
+
+# 省略 arm_name 时选择 GetArmNames() 返回的第一个臂。
+./lib/modi_sdk/single_arm_example_free_drive <robot_id>
+```
+
+程序校验臂名及机器人状态，打印 HAL 测量重力，然后调用
+`EnableFreeDrive(arm_name)` 和 `IsFreeDriveEnabled(arm_name)`。运行期间
+每 500 ms 按 `GetArmNames()` 顺序打印所有臂的 `GetControlMode()`，仅启用
+所选臂的拖动示教。按 Ctrl-C 或发送 SIGTERM 时，先调用
+`DisableFreeDrive(arm_name)` 在当前位置恢复位置保持，再停止 SDK 客户端。
+启用失败或状态查询失效后也会尝试禁用清理，服务失败会打印错误码并返回非零退出码。
+
+HAL 重力读取返回 `base_link` 坐标系中的测量值；后端会结合当前安装位姿
+转换成 world 坐标系后传给 WBC。读取失败会阻止本次拖动启用，避免使用陈旧重力。
+因此运行前应确认 `gravity_sensor_position` 和安装位姿均已正确配置。
+`PowerOff` 和 `BrakeLock` 也会自动关闭拖动示教，但本示例不主动调用它们。
 
 ## 6. 客户端配置与生命周期
 
