@@ -139,10 +139,66 @@ cmake --build build/example --parallel "$(nproc)"
 | [`example/single_arm_example`](example/single_arm_example) | 单臂模型、状态、运动、算法、实时话题和末端执行器示例 |
 | [`example/dual_arm_example`](example/dual_arm_example) | 双臂模型、状态、运动、算法和实时话题示例 |
 | [`example/single_arm_example/example_free_drive.cpp`](example/single_arm_example/example_free_drive.cpp) | 按臂启用拖动示教、读取 HAL 重力及工作模式、退出时禁用拖动 |
+| [`example/dual_arm_example/example_follow_joint.cpp`](example/dual_arm_example/example_follow_joint.cpp) | MoveJoint 到预设双臂关节位置后，以 10 Hz 采样中心附近随机笛卡尔目标，经 IK 下发 FollowJoint |
+| [`example/dual_arm_example/example_follow_pose.cpp`](example/dual_arm_example/example_follow_pose.cpp) | MoveJoint 到相同预设关节后，以 10 Hz 直接下发随机 xyzRPY 给 FollowPose，由 WBC 内部求 IK |
+| [`example/dual_arm_example/example_servo_joint.cpp`](example/dual_arm_example/example_servo_joint.cpp) | 双臂全部被控关节 MoveJoint 回零后，以 5 ms 周期、0.01° 步进在 ±30° 间循环 |
+| [`example/dual_arm_example/example_tool_gripper.cpp`](example/dual_arm_example/example_tool_gripper.cpp) | 每侧夹爪按指定周期调用 SetToolGripperPosition，默认 100 ms（10 Hz），每十次发送最大开度并等待到位，只打印启动信息和错误 |
 | [`example/chassis_example`](example/chassis_example) | 底盘上电、速度控制、状态读取、停止和下电示例 |
 
 运动控制示例会驱动真实设备。首次运行前应阅读源码，降低目标位置、速度和加速度，
 确认机器人固定可靠、运动区域安全并且急停可用。
+
+FollowJoint 示例先等待 MoveJoint 到预设初始关节，再记录双臂当前末端位姿作为固定中心。
+循环在世界坐标 xyz 各 ±10 cm、RPY 各 ±30° 内独立采样，使用当前实测关节作为 IK 参考，
+求解成功且关节解在安全限位内时下发 FollowJoint；无解目标跳过，Ctrl+C 调用 StopMotion。
+FollowJoint 与 MoveJoint 共用按臂后台调度；重规划期间保持最后位置输出，完成后恢复采样。
+连续 Follow 的规划起点继承最近指令的关节位置、速度和加速度，不预先 StopMotion 或 Reset；
+后台保持期间的实际速度、加速度连续性不作保证。
+`Motion()->FollowPose(target_poses, velocity, acceleration)` 可直接提交世界坐标系
+`xyzRPY` 目标，位置单位 m，姿态单位 rad，目标顺序与末端列表一致。
+WBC 以最近输出的关节指令为 IK 参考，复用支持臂角搜索的后台求解器，成功后
+调用 FollowJoint；速度和加速度仍为关节上限（rad/s、rad/s²），默认 0.1、0.5。
+IK 或规划失败时返回错误并保留原轨迹；末端路径不保证为笛卡尔直线。
+目标循环频率为 10 Hz，每秒打印实际循环频率、接受/跳过次数和周期超时次数；不补发积压周期。
+需要配套使用后台 IK 查询版本的服务端，求解过程不暂停 WBC，也不重置正在执行的轨迹。
+后台普通 CCS IK 在 A/B 分支无解或解的关节限位余量不足 3° 时补充搜索其他臂角，
+普通解与搜索解均保留原约束及至少 3° 关节限位余量；
+几何不可达或有限采样仍无解的目标继续跳过。
+运行前手动上电、退出拖动并结束已有运动。
+
+```bash
+./build/example/dual_arm_example_follow_joint <robot_id> [domain_id]
+```
+
+FollowPose 示例沿用相同初始关节、固定中心和随机范围，直接调用 FollowPose，
+客户端不调用 SolveIkPos，也不逐周期读取参考关节。IK 无解或轨迹规划失败计为跳过，
+其他服务错误结束循环；每秒打印实际频率、接受/跳过次数、周期超时和最近返回码。
+Ctrl+C 调用 StopMotion；后台重规划期间保持最后位置输出，末端路径不保证为直线。
+
+```bash
+./build/example/dual_arm_example_follow_pose <robot_id> [domain_id]
+```
+
+双臂夹爪示例从模型获取两个机械臂名称，每侧按指定周期发送独立随机开度。
+周期默认 100 ms（每侧 10 Hz，合计每秒目标 20 次 SDK 调用），可通过最后的 `周期_ms` 参数设置，须为正整数。
+默认范围为 1~100%，包含上下限；可指定范围、运行秒数和 DDS 域，原有参数顺序保持不变。
+每侧第 10、20、30……次调用固定发送设定的最大开度，其余次数在指定范围内随机取值。
+每次发送最大开度（含随机命中最大值）后，该侧暂停后续指令，等待发送后新收到的有效反馈确认到位：
+实际开度与目标相差不超过 1%，运行状态不再处于夹取中或张开中，且无设备故障。
+等待最长 10 秒，反馈超过 500 ms 未更新、反馈无效或设备故障时结束测试；另一侧独立运行。
+到位后按指定周期重新发送，不补发等待期间的目标，因此包含等待时间的实际平均发送频率会低于目标频率。
+运行前须手动上电，使系统允许运动。只打印启动信息和错误，反馈订阅仅用于到位判断。
+调用超期会跳过错过的周期，不集中补发；
+任一调用返回非零时结束双侧发送。运行时间为 0 时持续到 Ctrl+C，退出时请求停止两侧夹爪。
+返回 0 表示目标已接收，不能据此判断夹爪已经到位；设定周期控制 SDK 调用频率，HAL 可能合并待发目标。
+
+```bash
+./build/example/dual_arm_example_tool_gripper <robot_id>
+# 在 1~100% 之间随机发送，运行 60 秒，DDS domain_id 为 0：
+./build/example/dual_arm_example_tool_gripper <robot_id> 1 100 60 0
+# 显式指定 50 ms 周期（每侧 20 Hz）：
+./build/example/dual_arm_example_tool_gripper <robot_id> 1 100 60 0 50
+```
 
 ## 文档中心
 

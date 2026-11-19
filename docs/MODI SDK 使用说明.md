@@ -99,6 +99,25 @@ cmake --build build -j"$(nproc)"
 
 运动类示例会驱动真实设备。首次运行前应阅读源码并减小目标位置、速度和加速度。
 
+### 双臂 ServoJoint 往复运动示例
+
+```bash
+./build/example/dual_arm_example_servo_joint <robot_id>
+```
+
+机器人需已上电，所有臂处于位置控制，安全状态为 Normal。示例按
+`GetActuatorJointNames()` 顺序同步控制双臂全部被控关节，不提供单臂入口。
+先用 MoveJoint 以 0.1 rad/s、0.5 rad/s² 回到全零，确认完成后才开始
+通过 `/Robot/Motion/ServoJoint` 发布目标：周期 5 ms，每次步进 0.01°
+（2°/s），从 0° 到 +30°，再到 -30°，之后循环。端点保持一个周期后反向。
+发布端启动时先持续发送零目标，确认服务端进入伺服规划后才开始递增，避免 DDS
+尚未匹配时提前消耗轨迹点；10 秒内未确认则停止并报错。
+若任一关节限位无法覆盖 ±30°，示例拒绝开始运动。
+
+Ctrl+C 或安全/电源状态异常时，先停止周期发布，再通过服务接口调用
+`StopMotion()`；不自动上电、下电或清除碰撞。SDK 发布周期设置为 200 Hz，
+实际发送时序仍受主机调度和网络影响。
+
 ### 拖动示教示例
 
 源码位于 `example/single_arm_example/example_free_drive.cpp`，同时支持单臂和双臂。
